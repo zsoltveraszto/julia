@@ -90,9 +90,17 @@ end
 
 # matrix multiplication
 for i = 1:5
-    a = sprand(10, 5, 0.5)
-    b = sprand(5, 10, 0.1)
+    a = sprand(10, 5, 0.5); ad = full(a);
+    b = sprand(5, 10, 0.1); bd = full(b);
     @test maximum(abs(a*b - full(a)*full(b))) < 100*eps()
+    @test_approx_eq ad*bd[:,1] a*bd[:,1]
+    @test_approx_eq ad'ones(10) a'ones(10)
+    @test_approx_eq ad.'ones(10) a.'ones(10)
+    @test_approx_eq ad*b a*bd
+    @test_approx_eq ad*bd a*bd
+    @test_approx_eq ad'ones(10,2) ad'ones(10,2)
+    @test_approx_eq ad.'ones(10,2) ad.'ones(10,2)
+    @test_approx_eq a*b ad*bd
 end
 
 # reductions

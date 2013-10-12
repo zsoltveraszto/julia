@@ -271,12 +271,13 @@ B = rand(1:20, 5, 5) - 10
  
 # Preallocated
 C = Array(Int, size(A, 1), size(B, 2))
-@test A_mul_B!(C, A, B) == A*B
-@test At_mul_B!(C, A, B) == A'*B
-@test A_mul_Bt!(C, A, B) == A*B'
-@test At_mul_Bt!(C, A, B) == A'*B'
 
 # matrix algebra with subarrays of floats (stride != 1)
+@test A_mul_B!(1, A, B, 0, C) == A*B
+@test At_mul_B!(1, A, B, 0, C) == A'*B
+@test A_mul_Bt!(1, A, B, 0, C) == A*B'
+@test At_mul_Bt!(1, A, B, 0, C) == A'*B'
+                                        # matrix algebra with subarrays of floats (stride != 1)
 A = reshape(float64(1:20),5,4)
 Aref = A[1:2:end,1:2:end]
 Asub = sub(A, 1:2:5, 1:2:4)
