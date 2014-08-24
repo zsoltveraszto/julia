@@ -1056,6 +1056,19 @@ static bool local_var_occurs(jl_value_t *e, jl_sym_t *s)
                 return true;
         }
     }
+    else if (jl_typeis(e,jl_returnnode_type)) {
+        if (local_var_occurs(jl_fieldref(e,0),s))
+            return true;
+    }
+    else if (jl_typeis(e,jl_gotoifnotnode_type)) {
+        if (local_var_occurs(jl_fieldref(e,0),s))
+            return true;
+    }
+    else if (jl_typeis(e,jl_assignnode_type)) {
+        if (local_var_occurs(jl_fieldref(e,0),s) ||
+            local_var_occurs(jl_fieldref(e,1),s))
+            return true;
+    }
     else if (jl_is_getfieldnode(e)) {
         if (local_var_occurs(jl_fieldref(e,0),s))
             return true;
@@ -1070,19 +1083,10 @@ static std::set<jl_sym_t*> assigned_in_try(jl_array_t *stmts, int s, long l,
     size_t slength = jl_array_dim0(stmts);
     for(int i=s; i < (int)slength; i++) {
         jl_value_t *st = jl_arrayref(stmts,i);
-        if (jl_is_expr(st)) {
-            if (((jl_expr_t*)st)->head == assign_sym) {
-                jl_sym_t *sy;
-                jl_value_t *ar = jl_exprarg(st, 0);
-                if (jl_is_symbolnode(ar)) {
-                    sy = jl_symbolnode_sym(ar);
-                }
-                else {
-                    assert(jl_is_symbol(ar));
-                    sy = (jl_sym_t*)ar;
-                }
-                av.insert(sy);
-            }
+        if (jl_typeis(st,jl_assignnode_type)) {
+            jl_sym_t *sy = (jl_sym_t*)jl_fieldref(st,0);
+            assert(jl_is_symbol(sy));
+            av.insert(sy);
         }
         if (jl_is_labelnode(st)) {
             if (jl_labelnode_label(st) == l) {
@@ -1186,6 +1190,16 @@ static void simple_escape_analysis(jl_value_t *expr, bool esc, jl_codectx_t *ctx
             }
         }
         return;
+    }
+    else if (jl_typeis(expr,jl_assignnode_type)) {
+        simple_escape_analysis(jl_fieldref(expr,0), esc, ctx);
+        simple_escape_analysis(jl_fieldref(expr,1), esc, ctx);
+    }
+    else if (jl_typeis(expr,jl_returnnode_type)) {
+        simple_escape_analysis(jl_fieldref(expr,0), esc, ctx);
+    }
+    else if (jl_typeis(expr,jl_gotoifnotnode_type)) {
+        simple_escape_analysis(jl_fieldref(expr,0), esc, ctx);
     }
     jl_value_t *ty = expr_type(expr, ctx);
     if (jl_is_symbolnode(expr)) {
@@ -3332,15 +3346,16 @@ static Function *emit_function(jl_lambda_info_t *lam, bool cstyle)
     // fetch init exprs of SSA vars for easy reference
     for(i=0; i < jl_array_len(stmts); i++) {
         jl_value_t *st = jl_cellref(stmts,i);
-        if (jl_is_expr(st) && ((jl_expr_t*)st)->head == assign_sym) {
-            jl_value_t *lhs = jl_exprarg(st,0);
-            if (jl_is_symbolnode(lhs))
-                lhs = (jl_value_t*)jl_symbolnode_sym(lhs);
+        if (jl_typeis(st,jl_assignnode_type)) {
+            jl_value_t *lhs = jl_fieldref(st,0);
+            assert(jl_is_symbol(lhs));
+            //if (jl_is_symbolnode(lhs))
+            //    lhs = (jl_value_t*)jl_symbolnode_sym(lhs);
             std::map<jl_sym_t*,jl_varinfo_t>::iterator it = ctx.vars.find((jl_sym_t*)lhs);
             if (it != ctx.vars.end()) {
                 jl_varinfo_t &vi = (*it).second;
                 if (vi.isSA) {
-                    vi.initExpr = jl_exprarg(st,1);
+                    vi.initExpr = jl_fieldref(st,1);
                 }
             }
         }

@@ -198,8 +198,16 @@ jl_module_t *jl_base_relative_to(jl_module_t *m)
     return (m==jl_core_module||m==jl_old_base_module||jl_base_module==NULL) ? m : jl_base_module;
 }
 
-int jl_has_intrinsics(jl_expr_t *e)
+int jl_has_intrinsics(jl_value_t *v)
 {
+    if (jl_typeis(v,jl_returnnode_type))
+        return jl_has_intrinsics(jl_fieldref(v,0));
+    if (jl_typeis(v,jl_assignnode_type))
+        return jl_has_intrinsics(jl_fieldref(v,1));
+    if (jl_typeis(v,jl_gotoifnotnode_type))
+        return jl_has_intrinsics(jl_fieldref(v,0));
+    if (!jl_is_expr(v)) return 0;
+    jl_expr_t *e = (jl_expr_t*)v;
     if (jl_array_len(e->args) == 0)
         return 0;
     if (e->head == static_typeof_sym) return 1;
@@ -211,7 +219,7 @@ int jl_has_intrinsics(jl_expr_t *e)
     int i;
     for(i=0; i < jl_array_len(e->args); i++) {
         jl_value_t *a = jl_exprarg(e,i);
-        if (jl_is_expr(a) && jl_has_intrinsics((jl_expr_t*)a))
+        if (jl_has_intrinsics(a))
             return 1;
     }
     return 0;
@@ -247,13 +255,15 @@ int jl_eval_with_compiler_p(jl_expr_t *expr, int compileloops)
                     return 1;
                 }
             }
-            else if (jl_is_expr(stmt)) {
-                if (compileloops && ((jl_expr_t*)stmt)->head==goto_ifnot_sym) {
-                    int l = jl_unbox_long(jl_exprarg(stmt,1));
+            else if (jl_typeis(stmt, jl_gotoifnotnode_type)) {
+                if (compileloops) {
+                    int l = jl_gotoifnotnode_label(stmt);
                     if (labls[l/8]&(1<<(l&7))) {
                         return 1;
                     }
                 }
+            }
+            else if (jl_is_expr(stmt)) {
                 // to compile code that uses exceptions
                 /*
                 if (((jl_expr_t*)stmt)->head == enter_sym) {
@@ -263,7 +273,7 @@ int jl_eval_with_compiler_p(jl_expr_t *expr, int compileloops)
             }
         }
     }
-    if (jl_has_intrinsics(expr)) return 1;
+    if (jl_has_intrinsics((jl_value_t*)expr)) return 1;
     return 0;
 }
 
@@ -373,10 +383,10 @@ jl_value_t *jl_toplevel_eval_flex(jl_value_t *e, int fast)
 {
     //jl_show(ex);
     //JL_PRINTF(JL_STDOUT, "\n");
-    if (!jl_is_expr(e))
-        return jl_interpret_toplevel_expr(e);
-
     jl_expr_t *ex = (jl_expr_t*)e;
+
+    if (jl_is_expr(ex)) {
+
     if (ex->head == null_sym || ex->head == error_sym) {
         // expression types simple enough not to need expansion
         return jl_interpret_toplevel_expr(e);
@@ -444,17 +454,25 @@ jl_value_t *jl_toplevel_eval_flex(jl_value_t *e, int fast)
         return res;
     }
 
+    }
+    else if (!jl_typeis(e,jl_assignnode_type) && !jl_typeis(e,jl_returnnode_type)) {
+        return jl_interpret_toplevel_expr(e);
+    }
+
     jl_value_t *thunk=NULL;
     jl_value_t *result;
     jl_lambda_info_t *thk=NULL;
     int ewc = 0;
     JL_GC_PUSH3(&thunk, &thk, &ex);
 
-    if (ex->head != body_sym && ex->head != thunk_sym && ex->head != return_sym &&
-        ex->head != method_sym) {
+    if (!jl_is_expr(ex) ||
+        (ex->head != body_sym && ex->head != thunk_sym && ex->head != method_sym)) {
         // not yet expanded
         ex = (jl_expr_t*)jl_expand(e);
     }
+    if (jl_typeis(ex,jl_returnnode_type))
+        ex = (jl_expr_t*)jl_fieldref(ex,0);
+
     jl_sym_t *head = jl_is_expr(ex) ? ex->head : NULL;
 
     if (head == toplevel_sym) {

@@ -357,6 +357,8 @@ static jl_value_t *scm_to_julia_(value_t e, int eo)
                                          scm_to_julia_(car_(cdr_(e)),0));
                 }
             }
+            if (sym == copyast_sym)
+                eo = 1;
             jl_expr_t *ex = jl_exprn(sym, n);
             // allocate a fresh args array for empty exprs passed to macros
             if (eo && n == 0)
@@ -365,6 +367,13 @@ static jl_value_t *scm_to_julia_(value_t e, int eo)
                 assert(iscons(e));
                 jl_cellset(ex->args, i, scm_to_julia_(car_(e),eo));
                 e = cdr_(e);
+            }
+            if (sym == copyast_sym) {
+                if (n == 1 && jl_is_expr(jl_exprarg(ex,0)) &&
+                    ((jl_expr_t*)jl_exprarg(ex,0))->head == quote_sym) {
+                    jl_exprarg(ex,0) = jl_new_struct(jl_quotenode_type,
+                                                     jl_exprarg(jl_exprarg(ex,0),0));
+                }
             }
             return (jl_value_t*)ex;
         }
@@ -619,8 +628,7 @@ jl_lambda_info_t *jl_wrap_expr(jl_value_t *expr)
     jl_cellset(le->args, 1, vi);
     if (!jl_is_expr(expr) || ((jl_expr_t*)expr)->head != body_sym) {
         bo = jl_exprn(body_sym, 1);
-        jl_cellset(bo->args, 0, (jl_value_t*)jl_exprn(return_sym, 1));
-        jl_cellset(((jl_expr_t*)jl_exprarg(bo,0))->args, 0, expr);
+        jl_cellset(bo->args, 0, jl_new_struct(jl_returnnode_type, expr));
         expr = (jl_value_t*)bo;
     }
     jl_cellset(le->args, 2, expr);
@@ -777,16 +785,35 @@ static jl_value_t *copy_ast(jl_value_t *expr, jl_tuple_t *sp, int do_sp)
             jl_exprarg(ne, 1) = copy_ast(jl_exprarg(e,1), sp, 0);
             jl_exprarg(ne, 2) = copy_ast(jl_exprarg(e,2), sp, 1);
         }
-        else if (e->head == assign_sym) {
-            jl_exprarg(ne, 0) = copy_ast(jl_exprarg(e,0), sp, 0);
-            jl_exprarg(ne, 1) = copy_ast(jl_exprarg(e,1), sp, 1);
-        }
         else {
             for(size_t i=0; i < jl_array_len(e->args); i++)
                 jl_exprarg(ne, i) = copy_ast(jl_exprarg(e,i), sp, 1);
         }
         JL_GC_POP();
         return (jl_value_t*)ne;
+    }
+    else if (jl_typeis(expr,jl_returnnode_type)) {
+        jl_value_t *ne = jl_new_struct_uninit(jl_returnnode_type);
+        JL_GC_PUSH1(&ne);
+        jl_set_nth_field(ne, 0, copy_ast(jl_fieldref(expr,0), sp, 1));
+        JL_GC_POP();
+        return ne;
+    }
+    else if (jl_typeis(expr,jl_assignnode_type)) {
+        jl_value_t *ne = jl_new_struct_uninit(jl_assignnode_type);
+        JL_GC_PUSH1(&ne);
+        jl_set_nth_field(ne, 0, jl_fieldref(expr,0));
+        jl_set_nth_field(ne, 1, copy_ast(jl_fieldref(expr,1), sp, 1));
+        JL_GC_POP();
+        return ne;
+    }
+    else if (jl_typeis(expr,jl_gotoifnotnode_type)) {
+        jl_value_t *ne = jl_new_struct_uninit(jl_gotoifnotnode_type);
+        JL_GC_PUSH1(&ne);
+        jl_set_nth_field(ne, 0, copy_ast(jl_fieldref(expr,0), sp, 1));
+        jl_set_nth_field(ne, 1, jl_fieldref(expr,1));
+        JL_GC_POP();
+        return ne;
     }
     return expr;
 }

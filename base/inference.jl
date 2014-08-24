@@ -1088,20 +1088,21 @@ function getindex(x::StateUpdate, s::Symbol)
 end
 
 function abstract_interpret(e::ANY, vtypes, sv::StaticVarInfo)
-    !isa(e,Expr) && return vtypes
-    # handle assignment
-    if is(e.head,:(=))
-        t = abstract_eval(e.args[2], vtypes, sv)
-        lhs = e.args[1]
+    if isa(e,GotoIfNotNode)
+        abstract_eval(e.label, vtypes, sv)
+    elseif isa(e,AssignNode)
+        # handle assignment
+        t = abstract_eval(e.rhs, vtypes, sv)
+        lhs = e.lhs
         if isa(lhs,SymbolNode)
             lhs = lhs.name
         end
         assert(isa(lhs,Symbol))
         return StateUpdate(lhs, t, vtypes)
-    elseif is(e.head,:call) || is(e.head,:call1)
+    end
+    !isa(e,Expr) && return vtypes
+    if is(e.head,:call) || is(e.head,:call1)
         abstract_eval(e, vtypes, sv)
-    elseif is(e.head,:gotoifnot)
-        abstract_eval(e.args[1], vtypes, sv)
     elseif is(e.head,:method)
         fname = e.args[1]
         if isa(fname,Symbol)
@@ -1433,24 +1434,56 @@ function typeinf(linfo::LambdaStaticData,atypes::Tuple,sparams::Tuple, def, cop)
             pc´ = pc+1
             if isa(stmt,GotoNode)
                 pc´ = findlabel(labels,stmt.label)
+            elseif isa(stmt,GotoIfNotNode)
+                condexpr = stmt.cond
+                l = findlabel(labels,stmt.label)
+                # constant conditions
+                if is(condexpr,true)
+                elseif is(condexpr,false)
+                    pc´ = l
+                else
+                    # general case
+                    handler_at[l] = cur_hand
+                    if stchanged(changes, s[l], vars)
+                        push!(W, l)
+                        s[l] = stupdate(s[l], changes, vars)
+                    end
+                end
+            elseif isa(stmt,ReturnNode)
+                pc´ = n+1
+                rt = abstract_eval_arg(stmt.expr, s[pc], sv)
+                if frame.recurred
+                    rec = true
+                    if !(isa(frame.prev,CallStack) && frame.prev.cycleid == frame.cycleid)
+                        toprec = true
+                    end
+                    push!(recpts, pc)
+                    #if dbg
+                    #    show(pc); print(" recurred\n")
+                    #end
+                    frame.recurred = false
+                end
+                #if dbg
+                #    print("at "); show(pc)
+                #    print(" result is "); show(frame.result)
+                #    print(" and rt is "); show(rt)
+                #    print("\n")
+                #end
+                if tchanged(rt, frame.result)
+                    frame.result = tmerge(frame.result, rt)
+                    # revisit states that recursively depend on this
+                    for r in recpts
+                        #if dbg
+                        #    print("will revisit ")
+                        #    show(r)
+                        #    print("\n")
+                        #end
+                        push!(W,r)
+                    end
+                end
             elseif isa(stmt,Expr)
                 hd = stmt.head
-                if is(hd,:gotoifnot)
-                    condexpr = stmt.args[1]
-                    l = findlabel(labels,stmt.args[2])
-                    # constant conditions
-                    if is(condexpr,true)
-                    elseif is(condexpr,false)
-                        pc´ = l
-                    else
-                        # general case
-                        handler_at[l] = cur_hand
-                        if stchanged(changes, s[l], vars)
-                            push!(W, l)
-                            s[l] = stupdate(s[l], changes, vars)
-                        end
-                    end
-                elseif is(hd,:type_goto)
+                if is(hd,:type_goto)
                     for i = 2:length(stmt.args)
                         var = stmt.args[i]
                         if isa(var,SymbolNode)
@@ -1469,38 +1502,6 @@ function typeinf(linfo::LambdaStaticData,atypes::Tuple,sparams::Tuple, def, cop)
                                 old_s1 = copy(s[1])
                             end
                             s[1][var] = vt
-                        end
-                    end
-                elseif is(hd,:return)
-                    pc´ = n+1
-                    rt = abstract_eval_arg(stmt.args[1], s[pc], sv)
-                    if frame.recurred
-                        rec = true
-                        if !(isa(frame.prev,CallStack) && frame.prev.cycleid == frame.cycleid)
-                            toprec = true
-                        end
-                        push!(recpts, pc)
-                        #if dbg
-                        #    show(pc); print(" recurred\n")
-                        #end
-                        frame.recurred = false
-                    end
-                    #if dbg
-                    #    print("at "); show(pc)
-                    #    print(" result is "); show(frame.result)
-                    #    print(" and rt is "); show(rt)
-                    #    print("\n")
-                    #end
-                    if tchanged(rt, frame.result)
-                        frame.result = tmerge(frame.result, rt)
-                        # revisit states that recursively depend on this
-                        for r in recpts
-                            #if dbg
-                            #    print("will revisit ")
-                            #    show(r)
-                            #    print("\n")
-                            #end
-                            push!(W,r)
                         end
                     end
                 elseif is(hd,:enter)
@@ -1623,36 +1624,31 @@ function eval_annotate(e::ANY, vtypes::ANY, sv::StaticVarInfo, decls, clo)
     if isa(e, LambdaStaticData)
         push!(clo, e)
         return e
-    end
-
-    if !isa(e,Expr)
+    elseif isa(e, AssignNode)
+        s = e.lhs
+        # assignment LHS not subject to all-same-type variable checking,
+        # but the type of the RHS counts as one of its types.
+        #if isa(s,SymbolNode)
+        #    # we don't use types on assignment LHS
+        #    #s.typ = abstract_eval(s.name, vtypes, sv)
+        #    s = s.name
+        #else
+        #    #e.args[1] = SymbolNode(s, abstract_eval(s, vtypes, sv))
+        #end
+        e.rhs = eval_annotate(e.rhs, vtypes, sv, decls, clo)
+        # TODO: if this def does not reach any uses, maybe don't do this
+        rhstype = exprtype(e.rhs)
+        if !is(rhstype,None)
+            record_var_type(s, rhstype, decls)
+        end
+        return e
+    elseif !isa(e,Expr)
         return e
     end
 
     e = e::Expr
     head = e.head
     if is(head,:static_typeof) || is(head,:line) || is(head,:const)
-        return e
-    #elseif is(head,:gotoifnot) || is(head,:return)
-    #    e.typ = Any
-    elseif is(head,:(=))
-    #    e.typ = Any
-        s = e.args[1]
-        # assignment LHS not subject to all-same-type variable checking,
-        # but the type of the RHS counts as one of its types.
-        if isa(s,SymbolNode)
-            # we don't use types on assignment LHS
-            #s.typ = abstract_eval(s.name, vtypes, sv)
-            s = s.name
-        else
-            #e.args[1] = SymbolNode(s, abstract_eval(s, vtypes, sv))
-        end
-        e.args[2] = eval_annotate(e.args[2], vtypes, sv, decls, clo)
-        # TODO: if this def does not reach any uses, maybe don't do this
-        rhstype = exprtype(e.args[2])
-        if !is(rhstype,None)
-            record_var_type(s, rhstype, decls)
-        end
         return e
     end
     i0 = is(head,:method) ? 2 : 1
@@ -1730,31 +1726,29 @@ end
 function sym_replace(e::ANY, from1, from2, to1, to2)
     if isa(e,Symbol)
         return _sym_repl(e::Symbol, from1, from2, to1, to2, e)
-    end
-    if isa(e,SymbolNode)
+    elseif isa(e,SymbolNode)
         e2 = _sym_repl(e.name, from1, from2, to1, to2, e)
         if isa(e2, SymbolNode) || !isa(e2, Symbol)
             return e2
         else
             return SymbolNode(e2, e.typ)
         end
-    end
-    if !isa(e,Expr)
-        return e
-    end
-    e = e::Expr
-    if e.head === :(=)
+    elseif isa(e,AssignNode)
         # remove_redundant_temp_vars can only handle Symbols
         # on the LHS of assignments, so we make sure not to put
         # something else there
-        @assert length(e.args) == 2
-        e2 = _sym_repl(e.args[1]::Symbol, from1, from2, to1, to2, e.args[1]::Symbol)
+        e2 = _sym_repl(e.lhs::Symbol, from1, from2, to1, to2, e.lhs::Symbol)
         if isa(e2, SymbolNode)
             e2 = e2.name
         end
-        e.args[1] = e2::Symbol
-        e.args[2] = sym_replace(e.args[2], from1, from2, to1, to2)
-    elseif e.head !== :line
+        e.lhs = e2::Symbol
+        e.rhs = sym_replace(e.rhs, from1, from2, to1, to2)
+        return e
+    elseif !isa(e,Expr)
+        return e
+    end
+    e = e::Expr
+    if e.head !== :line
         for i=1:length(e.args)
             e.args[i] = sym_replace(e.args[i], from1, from2, to1, to2)
         end
@@ -1806,24 +1800,18 @@ function resolve_globals(e::ANY, locals, args, from, to, env1, env2)
             return s
         end
         return resolve_relative(s, locals, args, from, to, Any, s)
-    end
-    if isa(e,SymbolNode)
+    elseif isa(e,SymbolNode)
         s = e::SymbolNode
         name = s.name
         if contains_is(env1, name) || contains_is(env2, name)
             return s
         end
         return resolve_relative(name, locals, args, from, to, s.typ, s)
-    end
-    if !isa(e,Expr)
-        return e
-    end
-    e = e::Expr
-    if e.head === :(=)
+    elseif isa(e,AssignNode)
         # remove_redundant_temp_vars can only handle Symbols
         # on the LHS of assignments, so we make sure not to put
         # something else there
-        e2 = resolve_globals(e.args[1]::Symbol, locals, args, from, to, env1, env2)
+        e2 = resolve_globals(e.lhs::Symbol, locals, args, from, to, env1, env2)
         if isa(e2, GetfieldNode)
             # abort when trying to inline a function which assigns to a global
             # variable in a different module, since `Mod.X=V` isn't allowed
@@ -1833,10 +1821,15 @@ function resolve_globals(e::ANY, locals, args, from, to, env1, env2)
 #                resolve_globals(e.args[2], locals, args, from, to, env1, env2))
 #            e.typ = e2.typ
         else
-            e.args[1] = e2::Symbol
-            e.args[2] = resolve_globals(e.args[2], locals, args, from, to, env1, env2)
+            e.lhs = e2::Symbol
+            e.rhs = resolve_globals(e.rhs, locals, args, from, to, env1, env2)
         end
-    elseif !is(e.head,:line)
+        return e
+    elseif !isa(e,Expr)
+        return e
+    end
+    e = e::Expr
+    if !is(e.head,:line)
         for i=1:length(e.args)
             subex = e.args[i]
             if !(isa(subex,Number) || isa(subex,String))
@@ -1944,6 +1937,9 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
     if isconstantfunc(e, sv) !== false
         return true
     end
+    if isa(e,ReturnNode)
+        return effect_free(e.expr,sv,allow_volatile)
+    end
     if isa(e,Expr)
         e = e::Expr
         if e.head === :static_typeof
@@ -1993,8 +1989,6 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
                     return false
                 end
             end
-            # fall-through
-        elseif e.head === :return
             # fall-through
         else
             return false
@@ -2174,7 +2168,7 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
                 push!(locals, {name,argtype,0})
                 push!(newcall.args, argtype===Any ? name : SymbolNode(name, argtype))
             end
-            body.args = {Expr(:return, newcall)}
+            body.args = {ReturnNode(newcall)}
             ast = Expr(:lambda, newnames, {{}, locals, {}}, body)
             need_mod_annotate = false
         else
@@ -2282,7 +2276,7 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
         t.typ = Tuple
         argexprs2 = t.args
         icall = LabelNode(label_counter(body.args)+1)
-        partmatch = Expr(:gotoifnot, false, icall.label)
+        partmatch = GotoIfNotNode(false, icall.label)
         thrw = Expr(:call, :throw, Expr(:call, Main.Base.MethodError, (f, :inline), t))
         thrw.typ = None
     end
@@ -2354,7 +2348,7 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
             push!(spvals, v1)
             vnew2 = unique_name(enclosing_ast, ast)
             v2 = (argtype===Any ? vnew2 : SymbolNode(vnew2,argtype))
-            unshift!(body.args, Expr(:(=), a, v2))
+            unshift!(body.args, AssignNode(a, v2))
             args[i] = a = vnew2
             islocal = false
             aeitype = argtype
@@ -2365,11 +2359,11 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
             cond.typ = Bool
             cond = Expr(:call, Intrinsics.not_int, cond)
             cond.typ = Bool
-            cond = Expr(:call, Intrinsics.or_int, cond, partmatch.args[1])
+            cond = Expr(:call, Intrinsics.or_int, cond, partmatch.cond)
             cond.typ = Bool
             cond = Expr(:call, Intrinsics.box, Bool, cond)
             cond.typ = Bool
-            partmatch.args[1] = cond
+            partmatch.cond = cond
         else
             affect_free = stmts_free && !islocal # false = previous statements might affect the result of evaluating argument
             occ = 0
@@ -2393,7 +2387,7 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
             if occ != 0 # islocal=true is implied by occ!=0
                 vnew = unique_name(enclosing_ast, ast)
                 add_variable(enclosing_ast, vnew, aeitype, !islocal)
-                unshift!(stmts, Expr(:(=), vnew, aei))
+                unshift!(stmts, AssignNode(vnew, aei))
                 argexprs[i] = aeitype===Any ? vnew : SymbolNode(vnew,aeitype)
                 stmts_free &= free
             elseif !free && !isType(aeitype)
@@ -2405,7 +2399,7 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
             unshift!(argexprs2, (argtype===Any ? a : SymbolNode(a,argtype)))
         end
     end
-    if incompletematch && partmatch.args[1] != false
+    if incompletematch && partmatch.cond != false
         unshift!(body.args, icall)
         unshift!(body.args, thrw)
         unshift!(body.args, partmatch)
@@ -2431,12 +2425,12 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
         if isa(a,GotoNode)
             a = a::GotoNode
             body.args[i] = gn(newlabels[a.label+1])
+        elseif isa(a,GotoIfNotNode)
+            a.label = newlabels[a.label+1]
         elseif isa(a,Expr)
             a = a::Expr
             if a.head === :enter
                 a.args[1] = newlabels[a.args[1]+1]
-            elseif a.head === :gotoifnot
-                a.args[2] = newlabels[a.args[2]+1]
             end
         end
     end
@@ -2451,19 +2445,16 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
         push!(body.args, Expr(:call,:error,"fatal error in type inference"))
         lastexpr = nothing
     else
-        @assert isa(lastexpr,Expr) "inference.jl:1774"
-        @assert is(lastexpr.head,:return) "inference.jl:1775"
+        @assert isa(lastexpr,ReturnNode) "inference.jl:1774"
     end
     for a in body.args
-        push!(stmts, a)
-        if isa(a,Expr)
-            a = a::Expr
-            if a.head === :return
-                multiret = true
-                unshift!(a.args, retval)
-                a.head = :(=)
-                push!(stmts, gn(retstmt))
-            end
+        if isa(a,ReturnNode)
+            multiret = true
+            a = AssignNode(retval, a.expr)
+            push!(stmts, a)
+            push!(stmts, gn(retstmt))
+        else
+            push!(stmts, a)
         end
     end
 
@@ -2471,14 +2462,13 @@ function inlineable(f, e::Expr, atypes, sv, enclosing_ast)
         rettype = exprtype(ast.args[3])
         add_variable(enclosing_ast, retval, rettype, false)
         if lastexpr !== nothing
-            unshift!(lastexpr.args, retval)
-            lastexpr.head = :(=)
+            lastexpr = AssignNode(retval, lastexpr.expr)
             push!(stmts, lastexpr)
         end
         push!(stmts, retstmt)
         expr = rettype===Any ? retval : SymbolNode(retval,rettype)
     else
-        expr = lastexpr.args[1]
+        expr = lastexpr.expr
     end
 
     if isa(expr,Expr)
@@ -2592,7 +2582,7 @@ function inlining_pass(e::Expr, sv, ast)
                     restype = exprtype(res1)
                     vnew = unique_name(ast)
                     add_variable(ast, vnew, restype, true)
-                    unshift!(stmts, Expr(:(=), vnew, res1))
+                    unshift!(stmts, AssignNode(vnew, res1))
                     argloc[i] = restype===Any ? vnew : SymbolNode(vnew,restype)
                 else
                     argloc[i] = res1
@@ -2805,8 +2795,9 @@ end
 function delete_var!(ast, v)
     filter!(vi->!symequal(vi[1],v), ast.args[2][2])
     filter!(x->!symequal(x,v), ast.args[2][1])
-    filter!(x->!(isa(x,Expr) && (x.head === :(=) || x.head === :const) &&
-                 symequal(x.args[1],v)),
+    filter!(x->!(isa(x,AssignNode) && symequal(x.lhs,v)),
+            ast.args[3].args)
+    filter!(x->!(isa(x,Expr) && x.head === :const && symequal(x.args[1],v)),
             ast.args[3].args)
     ast
 end
@@ -2862,11 +2853,11 @@ function find_sa_vars(ast)
     vnames = ast.args[2][1]
     for i = 1:length(body)
         e = body[i]
-        if isa(e,Expr) && is(e.head,:(=))
-            lhs = e.args[1]
+        if isa(e,AssignNode)
+            lhs = e.lhs
             if contains_is(vnames, lhs)  # exclude globals
                 if !haskey(av, lhs)
-                    av[lhs] = e.args[2]
+                    av[lhs] = e.rhs
                 else
                     av2[lhs] = true
                 end
@@ -2891,8 +2882,9 @@ symequal(x::ANY       , y::ANY)        = is(x,y)
 function occurs_outside_tupleref(e::ANY, sym::ANY, sv::StaticVarInfo, tuplen::Int)
     if is(e, sym) || (isa(e, SymbolNode) && is(e.name, sym))
         return true
-    end
-    if isa(e,Expr)
+    elseif isa(e,AssignNode)
+        return occurs_outside_tupleref(e.rhs, sym, sv, tuplen)
+    elseif isa(e,Expr)
         e = e::Expr
         if is_known_call(e, tupleref, sv) && symequal(e.args[2],sym)
             targ = e.args[2]
@@ -2905,13 +2897,9 @@ function occurs_outside_tupleref(e::ANY, sym::ANY, sv::StaticVarInfo, tuplen::In
             end
             return false
         end
-        if is(e.head,:(=))
-            return occurs_outside_tupleref(e.args[2], sym, sv, tuplen)
-        else
-            for a in e.args
-                if occurs_outside_tupleref(a, sym, sv, tuplen)
-                    return true
-                end
+        for a in e.args
+            if occurs_outside_tupleref(a, sym, sv, tuplen)
+                return true
             end
         end
     end
@@ -2966,12 +2954,12 @@ function tuple_elim_pass(ast::Expr)
     i = 1
     while i < length(body)
         e = body[i]
-        if !(isa(e,Expr) && is(e.head,:(=)) && haskey(vs, e.args[1]))
+        if !(isa(e,AssignNode) && haskey(vs, e.lhs))
             i += 1
             continue
         end
-        var = e.args[1]
-        rhs = e.args[2]
+        var = e.lhs
+        rhs = e.rhs
         if isa(rhs,Expr) && is_known_call(rhs, tuple, sv)
             tup = rhs.args
             nv = length(tup)-1
@@ -2991,7 +2979,7 @@ function tuple_elim_pass(ast::Expr)
                 else
                     elty = exprtype(tupelt)
                     tmpv = unique_name(ast)
-                    tmp = Expr(:(=), tmpv, tupelt)
+                    tmp = AssignNode(tmpv, tupelt)
                     add_variable(ast, tmpv, elty, true)
                     insert!(body, i+n_ins, tmp)
                     vals[j] = SymbolNode(tmpv, elty)
