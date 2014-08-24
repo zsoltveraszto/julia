@@ -101,6 +101,20 @@
 #    name::Symbol
 #end
 
+#type ReturnNode
+#    expr
+#end
+
+#type AssignNode
+#    lhs::Symbol
+#    rhs
+#end
+
+#type GotoIfNotNode
+#    cond
+#    label::Int
+#end
+
 # type Task
 #     parent::Task
 #     last::Task
@@ -133,7 +147,7 @@ export
     StackOverflowError, UndefRefError, UndefVarError,
     # AST representation
     Expr, GotoNode, LabelNode, LineNumberNode, QuoteNode, SymbolNode, TopNode,
-    GetfieldNode, NewvarNode,
+    GetfieldNode, NewvarNode, ReturnNode, AssignNode, GotoIfNotNode,
     # object model functions
     apply, fieldtype, getfield, setfield!, yieldto, throw, tuple, is, ===, isdefined,
     # arraylen, arrayref, arrayset, arraysize, tuplelen, tupleref, convert_default,

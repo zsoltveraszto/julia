@@ -342,6 +342,20 @@ static jl_value_t *scm_to_julia_(value_t e, int eo)
                     return jl_new_struct(jl_newvarnode_type,
                                          scm_to_julia_(car_(e),0));
                 }
+                if (sym == return_sym) {
+                    return jl_new_struct(jl_returnnode_type,
+                                         scm_to_julia_(car_(e),0));
+                }
+                if (sym == assign_sym) {
+                    return jl_new_struct(jl_assignnode_type,
+                                         scm_to_julia_(car_(e),0),
+                                         scm_to_julia_(car_(cdr_(e)),0));
+                }
+                if (sym == goto_ifnot_sym) {
+                    return jl_new_struct(jl_gotoifnotnode_type,
+                                         scm_to_julia_(car_(e),0),
+                                         scm_to_julia_(car_(cdr_(e)),0));
+                }
             }
             jl_expr_t *ex = jl_exprn(sym, n);
             // allocate a fresh args array for empty exprs passed to macros
@@ -409,6 +423,18 @@ static value_t julia_to_list2(jl_value_t *a, jl_value_t *b)
     return l;
 }
 
+static value_t julia_to_list3(jl_value_t *a, jl_value_t *b, jl_value_t *c)
+{
+    value_t sa = julia_to_scm_(a);
+    fl_gc_handle(&sa);
+    value_t sb = julia_to_scm_(b);
+    fl_gc_handle(&sb);
+    value_t sc = julia_to_scm_(c);
+    value_t l = fl_listn(3, sa, sb, sc);
+    fl_free_gc_handles(2);
+    return l;
+}
+
 static value_t julia_to_scm_(jl_value_t *v)
 {
     if (jl_is_symbol(v)) {
@@ -433,6 +459,9 @@ static value_t julia_to_scm_(jl_value_t *v)
         fl_free_gc_handles(1);
         return scmv;
     }
+    if (jl_is_long(v) && fits_fixnum(jl_unbox_long(v))) {
+        return fixnum(jl_unbox_long(v));
+    }
     if (jl_typeis(v, jl_linenumbernode_type)) {
         return julia_to_list2((jl_value_t*)line_sym, jl_fieldref(v,0));
     }
@@ -451,8 +480,14 @@ static value_t julia_to_scm_(jl_value_t *v)
     if (jl_typeis(v, jl_topnode_type)) {
         return julia_to_list2((jl_value_t*)top_sym, jl_fieldref(v,0));
     }
-    if (jl_is_long(v) && fits_fixnum(jl_unbox_long(v))) {
-        return fixnum(jl_unbox_long(v));
+    if (jl_typeis(v, jl_returnnode_type)) {
+        return julia_to_list2((jl_value_t*)return_sym, jl_fieldref(v,0));
+    }
+    if (jl_typeis(v, jl_assignnode_type)) {
+        return julia_to_list3((jl_value_t*)assign_sym, jl_fieldref(v,0), jl_fieldref(v,1));
+    }
+    if (jl_typeis(v, jl_gotoifnotnode_type)) {
+        return julia_to_list3((jl_value_t*)goto_ifnot_sym, jl_fieldref(v,0), jl_fieldref(v,1));
     }
     value_t opaque = cvalue(jvtype, sizeof(void*));
     *(jl_value_t**)cv_data((cvalue_t*)ptr(opaque)) = v;
@@ -810,15 +845,20 @@ static jl_value_t *dont_copy_ast(jl_value_t *expr, jl_tuple_t *sp, int do_sp)
             jl_exprarg(e, 1) = dont_copy_ast(jl_exprarg(e,1), sp, 0);
             jl_exprarg(e, 2) = dont_copy_ast(jl_exprarg(e,2), sp, 1);
         }
-        else if (e->head == assign_sym) {
-            jl_exprarg(e, 0) = dont_copy_ast(jl_exprarg(e,0), sp, 0);
-            jl_exprarg(e, 1) = dont_copy_ast(jl_exprarg(e,1), sp, 1);
-        }
         else {
             for(size_t i=0; i < jl_array_len(e->args); i++)
                 jl_exprarg(e, i) = dont_copy_ast(jl_exprarg(e,i), sp, 1);
         }
         return (jl_value_t*)e;
+    }
+    else if (jl_typeis(expr,jl_returnnode_type)) {
+        jl_set_nth_field(expr, 0, dont_copy_ast(jl_fieldref(expr,0), sp, 1));
+    }
+    else if (jl_typeis(expr,jl_gotoifnotnode_type)) {
+        jl_set_nth_field(expr, 0, dont_copy_ast(jl_fieldref(expr,0), sp, 1));
+    }
+    else if (jl_typeis(expr,jl_assignnode_type)) {
+        jl_set_nth_field(expr, 1, dont_copy_ast(jl_fieldref(expr,1), sp, 1));
     }
     return expr;
 }
