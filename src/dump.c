@@ -1273,7 +1273,7 @@ void jl_init_serializer(void)
                      jl_box_int32(51), jl_box_int32(52), jl_box_int32(53),
                      jl_box_int32(54), jl_box_int32(55), jl_box_int32(56),
                      jl_box_int32(57), jl_box_int32(58), jl_box_int32(59),
-                     jl_box_int32(60), jl_box_int32(61),
+                     jl_box_int32(60),
 #endif
                      jl_box_int64(0), jl_box_int64(1), jl_box_int64(2),
                      jl_box_int64(3), jl_box_int64(4), jl_box_int64(5),
@@ -1296,7 +1296,7 @@ void jl_init_serializer(void)
                      jl_box_int64(51), jl_box_int64(52), jl_box_int64(53),
                      jl_box_int64(54), jl_box_int64(55), jl_box_int64(56),
                      jl_box_int64(57), jl_box_int64(58), jl_box_int64(59),
-                     jl_box_int64(60), jl_box_int64(61),
+                     jl_box_int64(60),
 #endif
                      jl_labelnode_type, jl_linenumbernode_type,
                      jl_gotonode_type, jl_quotenode_type, jl_topnode_type,
