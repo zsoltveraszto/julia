@@ -2644,6 +2644,37 @@ static Value *emit_expr(jl_value_t *expr, jl_codectx_t *ctx, bool isboxed,
         }
         return NULL;
     }
+    else if (jl_typeis(expr,jl_assignnode_type)) {
+        emit_assignment(jl_fieldref(expr,0), jl_fieldref(expr,1), ctx);
+        if (valuepos) {
+            return literal_pointer_val((jl_value_t*)jl_nothing);
+        }
+        return NULL;
+    }
+    else if (jl_typeis(expr,jl_gotoifnotnode_type)) {
+        jl_value_t *cond = jl_fieldref(expr,0);
+        int labelname = jl_gotoifnotnode_label(expr);
+        BasicBlock *ifso = BasicBlock::Create(getGlobalContext(), "if", ctx->f);
+        BasicBlock *ifnot = (*ctx->labels)[labelname];
+        assert(ifnot);
+        // NOTE: if type inference sees a constant condition it behaves as if
+        // the branch weren't there. But LLVM will not see constant conditions
+        // this way until a later optimization pass, so it might see one of our
+        // SSA vars as not dominating all uses. see issue #6068
+        // Work around this by generating unconditional branches.
+        if (cond == jl_true) {
+            builder.CreateBr(ifso);
+        }
+        else if (cond == jl_false) {
+            builder.CreateBr(ifnot);
+        }
+        else {
+            Value *isfalse = emit_condition(cond, "if", ctx);
+            builder.CreateCondBr(isfalse, ifnot, ifso);
+        }
+        builder.SetInsertPoint(ifso);
+        return NULL;
+    }
     if (!jl_is_expr(expr)) {
         // numeric literals
         int needroot = 1;
@@ -2667,40 +2698,10 @@ static Value *emit_expr(jl_value_t *expr, jl_codectx_t *ctx, bool isboxed,
     // this is object-disoriented.
     // however, this is a good way to do it because it should *not* be easy
     // to add new node types.
-    if (head == goto_ifnot_sym) {
-        jl_value_t *cond = args[0];
-        int labelname = jl_unbox_long(args[1]);
-        BasicBlock *ifso = BasicBlock::Create(getGlobalContext(), "if", ctx->f);
-        BasicBlock *ifnot = (*ctx->labels)[labelname];
-        assert(ifnot);
-        // NOTE: if type inference sees a constant condition it behaves as if
-        // the branch weren't there. But LLVM will not see constant conditions
-        // this way until a later optimization pass, so it might see one of our
-        // SSA vars as not dominating all uses. see issue #6068
-        // Work around this by generating unconditional branches.
-        if (cond == jl_true) {
-            builder.CreateBr(ifso);
-        }
-        else if (cond == jl_false) {
-            builder.CreateBr(ifnot);
-        }
-        else {
-            Value *isfalse = emit_condition(cond, "if", ctx);
-            builder.CreateCondBr(isfalse, ifnot, ifso);
-        }
-        builder.SetInsertPoint(ifso);
-    }
-
-    else if (head == call_sym || head == call1_sym) {
+    if (head == call_sym || head == call1_sym) {
         return emit_call(args, jl_array_dim0(ex->args), ctx, (jl_value_t*)ex);
     }
 
-    else if (head == assign_sym) {
-        emit_assignment(args[0], args[1], ctx);
-        if (valuepos) {
-            return literal_pointer_val((jl_value_t*)jl_nothing);
-        }
-    }
     else if (head == method_sym) {
         jl_value_t *mn = args[0];
         bool iskw = false;
@@ -3875,19 +3876,18 @@ static Function *emit_function(jl_lambda_info_t *lam, bool cstyle)
 		mallocVisitLine(filename, prevlno);
 	    prevlno = lno;
 	}
-        if (jl_is_expr(stmt) && ((jl_expr_t*)stmt)->head == return_sym) {
-            jl_expr_t *ex = (jl_expr_t*)stmt;
+        if (jl_typeis(stmt,jl_returnnode_type)) {
+            jl_value_t *ex = jl_fieldref(stmt,0);
             Value *retval;
             Type *retty = f->getReturnType();
             if (retty == jl_pvalue_llvmt) {
-                retval = boxed(emit_expr(jl_exprarg(ex,0), &ctx, true),&ctx,expr_type(stmt,&ctx));
+                retval = boxed(emit_expr(ex,&ctx,true), &ctx, expr_type(ex,&ctx));
             }
             else if (retty != T_void) {
-                retval = emit_unbox(retty, 
-                                    emit_unboxed(jl_exprarg(ex,0), &ctx), jlrettype);
+                retval = emit_unbox(retty, emit_unboxed(ex, &ctx), jlrettype);
             }
             else {
-                retval = emit_expr(jl_exprarg(ex,0), &ctx, false);
+                retval = emit_expr(ex, &ctx, false);
             }
 #ifdef JL_GC_MARKSWEEP
             Instruction *gcpop = (Instruction*)builder.CreateConstGEP1_32(ctx.gcframe, 1);

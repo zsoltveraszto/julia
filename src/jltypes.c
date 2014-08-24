@@ -3100,6 +3100,24 @@ void jl_init_types(void)
                         jl_tuple(1, jl_sym_type), 0, 0);
     jl_topnode_type->fptr = jl_f_default_ctor_1;
 
+    jl_returnnode_type =
+        jl_new_datatype(jl_symbol("ReturnNode"), jl_any_type, jl_null,
+                        jl_tuple(1, jl_symbol("expr")),
+                        jl_tuple(1, jl_any_type), 0, 1);
+    jl_returnnode_type->fptr = jl_f_default_ctor_1;
+
+    jl_assignnode_type =
+        jl_new_datatype(jl_symbol("AssignNode"), jl_any_type, jl_null,
+                        jl_tuple(2, jl_symbol("lhs"), jl_symbol("rhs")),
+                        jl_tuple(2, jl_symbol_type, jl_any_type), 0, 1);
+    jl_assignnode_type->fptr = jl_f_default_ctor_2;
+
+    jl_gotoifnotnode_type =
+        jl_new_datatype(jl_symbol("GotoIfNotNode"), jl_any_type, jl_null,
+                        jl_tuple(2, jl_symbol("cond"), jl_symbol("label")),
+                        jl_tuple(2, jl_any_type, jl_long_type), 0, 1);
+    jl_gotoifnotnode_type->fptr = jl_f_default_ctor_2;
+
     jl_module_type =
         jl_new_datatype(jl_symbol("Module"), jl_any_type, jl_null,
                         jl_tuple(2, jl_symbol("name"), jl_symbol("parent")),

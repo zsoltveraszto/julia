@@ -361,7 +361,9 @@ static int is_ast_node(jl_value_t *v)
         jl_is_uniontype(v) || jl_is_int32(v) || jl_is_int64(v) ||
         jl_is_symbolnode(v) || jl_is_bool(v) || jl_is_typevar(v) ||
         jl_is_topnode(v) || jl_is_quotenode(v) || jl_is_gotonode(v) ||
-        jl_is_labelnode(v) || jl_is_linenode(v) || jl_is_getfieldnode(v);
+        jl_is_labelnode(v) || jl_is_linenode(v) || jl_is_getfieldnode(v) ||
+        jl_typeis(v,jl_returnnode_type) || jl_typeis(v,jl_assignnode_type) ||
+        jl_typeis(v,jl_gotoifnotnode_type);
 }
 
 static int literal_val_id(jl_value_t *v)
@@ -1221,8 +1223,7 @@ void jl_init_serializer(void)
                      jl_null, jl_false, jl_true, jl_any_type, jl_symbol("Any"),
                      jl_symbol("Array"), jl_symbol("TypeVar"),
                      jl_symbol("Box"), jl_symbol("apply"),
-                     lambda_sym, body_sym, return_sym, call_sym, colons_sym,
-                     null_sym, goto_ifnot_sym, assign_sym,
+                     lambda_sym, body_sym, call_sym, colons_sym, null_sym,
 
                      jl_symbol("a"), jl_symbol("b"), jl_symbol("c"),
                      jl_symbol("d"), jl_symbol("e"), jl_symbol("f"),
@@ -1307,6 +1308,7 @@ void jl_init_serializer(void)
                      jl_ANY_flag, jl_array_any_type, jl_intrinsic_type, jl_method_type,
                      jl_methtable_type, jl_voidpointer_type, jl_newvarnode_type,
                      jl_array_symbol_type, jl_tupleref(jl_tuple_type,0),
+                     jl_returnnode_type, jl_assignnode_type, jl_gotoifnotnode_type,
 
                      jl_symbol_type->name, jl_pointer_type->name, jl_datatype_type->name,
                      jl_uniontype_type->name, jl_array_type->name, jl_expr_type->name,
@@ -1319,7 +1321,9 @@ void jl_init_serializer(void)
                      jl_intrinsic_type->name, jl_undef_type->name, jl_task_type->name,
                      jl_labelnode_type->name, jl_linenumbernode_type->name,
                      jl_gotonode_type->name, jl_quotenode_type->name,
-                     jl_topnode_type->name,
+                     jl_topnode_type->name, jl_returnnode_type->name,
+                     jl_assignnode_type->name, jl_gotoifnotnode_type->name,
+
 
                      jl_root_task, jl_bottom_func,
 

@@ -373,6 +373,9 @@ extern DLLEXPORT jl_datatype_t *jl_gotonode_type;
 extern DLLEXPORT jl_datatype_t *jl_quotenode_type;
 extern DLLEXPORT jl_datatype_t *jl_newvarnode_type;
 extern DLLEXPORT jl_datatype_t *jl_topnode_type;
+extern DLLEXPORT jl_datatype_t *jl_assignnode_type;
+extern DLLEXPORT jl_datatype_t *jl_returnnode_type;
+extern DLLEXPORT jl_datatype_t *jl_gotoifnotnode_type;
 extern DLLEXPORT jl_datatype_t *jl_intrinsic_type;
 extern DLLEXPORT jl_datatype_t *jl_methtable_type;
 extern DLLEXPORT jl_datatype_t *jl_method_type;
@@ -458,6 +461,7 @@ extern jl_sym_t *simdloop_sym;
 #define jl_linenode_line(x) (((ptrint_t*)x)[1])
 #define jl_labelnode_label(x) (((ptrint_t*)x)[1])
 #define jl_gotonode_label(x) (((ptrint_t*)x)[1])
+#define jl_gotoifnotnode_label(x) (((ptrint_t*)x)[2])
 #define jl_getfieldnode_val(s) (jl_fieldref(s,0))
 #define jl_getfieldnode_name(s) ((jl_sym_t*)jl_fieldref(s,1))
 #define jl_getfieldnode_type(s) (jl_fieldref(s,2))
