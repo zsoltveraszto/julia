@@ -1642,6 +1642,12 @@ function eval_annotate(e::ANY, vtypes::ANY, sv::StaticVarInfo, decls, clo)
             record_var_type(s, rhstype, decls)
         end
         return e
+    elseif isa(e,ReturnNode)
+        e.expr = eval_annotate(e.expr, vtypes, sv, decls, clo)
+        return e
+    elseif isa(e,GotoIfNotNode)
+        e.cond = eval_annotate(e.cond, vtypes, sv, decls, clo)
+        return e
     elseif !isa(e,Expr)
         return e
     end
@@ -1744,6 +1750,12 @@ function sym_replace(e::ANY, from1, from2, to1, to2)
         e.lhs = e2::Symbol
         e.rhs = sym_replace(e.rhs, from1, from2, to1, to2)
         return e
+    elseif isa(e,ReturnNode)
+        e.expr = sym_replace(e.expr, from1, from2, to1, to2)
+        return e
+    elseif isa(e,GotoIfNotNode)
+        e.cond = sym_replace(e.cond, from1, from2, to1, to2)
+        return e
     elseif !isa(e,Expr)
         return e
     end
@@ -1825,6 +1837,12 @@ function resolve_globals(e::ANY, locals, args, from, to, env1, env2)
             e.rhs = resolve_globals(e.rhs, locals, args, from, to, env1, env2)
         end
         return e
+    elseif isa(e,ReturnNode)
+        e.expr = resolve_globals(e.expr, locals, args, from, to, env1, env2)
+        return e
+    elseif isa(e,GotoIfNotNode)
+        e.cond = resolve_globals(e.cond, locals, args, from, to, env1, env2)
+        return e
     elseif !isa(e,Expr)
         return e
     end
@@ -1852,6 +1870,12 @@ function occurs_more(e::ANY, pred, n)
             end
         end
         return c
+    elseif isa(e,AssignNode)
+        return occurs_more(e.lhs,pred,n) + occurs_more(e.rhs,pred,n)
+    elseif isa(e,ReturnNode)
+        return occurs_more(e.expr,pred,n)
+    elseif isa(e,GotoIfNotNode)
+        return occurs_more(e.cond,pred,n)
     end
     if pred(e) || (isa(e,SymbolNode) && pred(e.name))
         return 1
@@ -1939,8 +1963,11 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
     end
     if isa(e,ReturnNode)
         return effect_free(e.expr,sv,allow_volatile)
-    end
-    if isa(e,Expr)
+    elseif isa(e,GotoIfNotNode)
+        return effect_free(e.cond,sv,allow_volatile)
+    elseif isa(e,AssignNode)
+        return effect_free(e.rhs,sv,allow_volatile)
+    elseif isa(e,Expr)
         e = e::Expr
         if e.head === :static_typeof
             return true
@@ -2520,6 +2547,7 @@ end
 
 const basenumtype = Union(Int32,Int64,Float32,Float64,Complex64,Complex128,Rational)
 
+inlining_pass(e, sv, ast) = (e,())
 function inlining_pass(e::Expr, sv, ast)
     if e.head == :method
         # avoid running the inlining pass on function definitions
@@ -2538,12 +2566,24 @@ function inlining_pass(e::Expr, sv, ast)
             if isa(ei,Expr)
                 res = inlining_pass(ei, sv, ast)
                 eargs[i] = res[1]
-                if isa(res[2],Array)
-                    sts = res[2]::Array{Any,1}
-                    for j = 1:length(sts)
-                        insert!(eargs, i, sts[j])
-                        i += 1
-                    end
+            elseif isa(ei,AssignNode)
+                res = inlining_pass(ei.rhs, sv, ast)
+                ei.rhs = res[1]
+            elseif isa(ei,GotoIfNotNode)
+                res = inlining_pass(ei.cond, sv, ast)
+                ei.cond = res[1]
+            elseif isa(ei,ReturnNode)
+                res = inlining_pass(ei.expr, sv, ast)
+                ei.expr = res[1]
+            else
+                i += 1
+                continue
+            end
+            if isa(res[2],Array)
+                sts = res[2]::Array{Any,1}
+                for j = 1:length(sts)
+                    insert!(eargs, i, sts[j])
+                    i += 1
                 end
             end
             i += 1
@@ -2884,6 +2924,10 @@ function occurs_outside_tupleref(e::ANY, sym::ANY, sv::StaticVarInfo, tuplen::In
         return true
     elseif isa(e,AssignNode)
         return occurs_outside_tupleref(e.rhs, sym, sv, tuplen)
+    elseif isa(e,ReturnNode)
+        return occurs_outside_tupleref(e.expr, sym, sv, tuplen)
+    elseif isa(e,GotoIfNotNode)
+        return occurs_outside_tupleref(e.cond, sym, sv, tuplen)
     elseif isa(e,Expr)
         e = e::Expr
         if is_known_call(e, tupleref, sv) && symequal(e.args[2],sym)
@@ -2907,41 +2951,65 @@ function occurs_outside_tupleref(e::ANY, sym::ANY, sv::StaticVarInfo, tuplen::In
 end
 
 # replace tupleref(tuple(exprs...), i) with exprs[i]
+function tupleref_elim_pass(e::AssignNode, sv)
+    tupleref_elim_pass(e.rhs, sv)
+    if isa(e.rhs,Expr)
+        e.rhs = elim_1_tupleref(e.rhs, sv)
+    end
+end
+function tupleref_elim_pass(e::ReturnNode, sv)
+    tupleref_elim_pass(e.expr, sv)
+    if isa(e.expr,Expr)
+        e.expr = elim_1_tupleref(e.expr, sv)
+    end
+end
+function tupleref_elim_pass(e::GotoIfNotNode, sv)
+    tupleref_elim_pass(e.cond, sv)
+    if isa(e.cond,Expr)
+        e.cond = elim_1_tupleref(e.cond, sv)
+    end
+end
+tupleref_elim_pass(e, sv) = nothing
 function tupleref_elim_pass(e::Expr, sv)
     for i = 1:length(e.args)
         ei = e.args[i]
+        tupleref_elim_pass(ei, sv)
         if isa(ei,Expr)
-            tupleref_elim_pass(ei, sv)
-            if is_known_call(ei, tupleref, sv) && length(ei.args)==3 &&
-                isa(ei.args[3],Int)
-                e1 = ei.args[2]
-                j = ei.args[3]
-                if isa(e1,Expr)
-                    if is_known_call(e1, tuple, sv) && (1 <= j < length(e1.args))
-                        ok = true
-                        for k = 2:length(e1.args)
-                            k == j+1 && continue
-                            if !effect_free(e1.args[k], sv, true)
-                                ok = false; break
-                            end
-                        end
-                        if ok
-                            e.args[i] = e1.args[j+1]
-                        end
-                    end
-                elseif isa(e1,Tuple) && (1 <= j <= length(e1))
-                    e1j = e1[j]
-                    if !(isa(e1j,Number) || isa(e1j,String) || isa(e1j,Tuple) ||
-                         isa(e1j,Type))
-                        e1j = QuoteNode(e1j)
-                    end
-                    e.args[i] = e1j
-                elseif isa(e1,QuoteNode) && isa(e1.value,Tuple) && (1 <= j <= length(e1.value))
-                    e.args[i] = QuoteNode(e1.value[j])
-                end
-            end
+            e.args[i] = elim_1_tupleref(ei, sv)
         end
     end
+end
+
+function elim_1_tupleref(ei, sv)
+    if is_known_call(ei, tupleref, sv) && length(ei.args)==3 &&
+        isa(ei.args[3],Int)
+        e1 = ei.args[2]
+        j = ei.args[3]
+        if isa(e1,Expr)
+            if is_known_call(e1, tuple, sv) && (1 <= j < length(e1.args))
+                ok = true
+                for k = 2:length(e1.args)
+                    k == j+1 && continue
+                    if !effect_free(e1.args[k], sv, true)
+                        ok = false; break
+                    end
+                end
+                if ok
+                    return e1.args[j+1]
+                end
+            end
+        elseif isa(e1,Tuple) && (1 <= j <= length(e1))
+            e1j = e1[j]
+            if !(isa(e1j,Number) || isa(e1j,String) || isa(e1j,Tuple) ||
+                 isa(e1j,Type))
+                e1j = QuoteNode(e1j)
+            end
+            return e1j
+        elseif isa(e1,QuoteNode) && isa(e1.value,Tuple) && (1 <= j <= length(e1.value))
+            return QuoteNode(e1.value[j])
+        end
+    end
+    return ei
 end
 
 # eliminate allocation of unnecessary tuples
@@ -2994,29 +3062,40 @@ function tuple_elim_pass(ast::Expr)
     end
 end
 
-function replace_tupleref!(ast, e::ANY, tupname, vals, sv, i0)
-    if !isa(e,Expr)
-        return
-    end
-    for i = i0:length(e.args)
-        a = e.args[i]
-        if isa(a,Expr) && is_known_call(a, tupleref, sv) &&
-            symequal(a.args[2],tupname)
-            val = vals[a.args[3]]
-            if isa(val,SymbolNode) && a.typ <: val.typ && !typeseq(a.typ,val.typ)
-                # original expression might have better type info than
-                # the tuple element expression that's replacing it.
-                val.typ = a.typ
-                for vi in ast.args[2][2]::Array{Any,1}
-                    if vi[1] === val.name
-                        vi[2] = a.typ
-                        break
-                    end
+function replace_1_tupleref(ast, a::ANY, tupname, vals, sv, i0)
+    if isa(a,Expr) && is_known_call(a, tupleref, sv) && symequal(a.args[2],tupname)
+        val = vals[a.args[3]]
+        if isa(val,SymbolNode) && a.typ <: val.typ && !typeseq(a.typ,val.typ)
+            # original expression might have better type info than
+            # the tuple element expression that's replacing it.
+            val.typ = a.typ
+            for vi in ast.args[2][2]::Array{Any,1}
+                if vi[1] === val.name
+                    vi[2] = a.typ
+                    break
                 end
             end
-            e.args[i] = val
-        else
+        end
+        return val
+    end
+    return a
+end
+
+function replace_tupleref!(ast, e::ANY, tupname, vals, sv, i0)
+    if isa(e,AssignNode)
+        replace_tupleref!(ast, e.rhs, tupname, vals, sv, 1)
+        e.rhs = replace_1_tupleref(ast, e.rhs, tupname, vals, sv, 1)
+    elseif isa(e,GotoIfNotNode)
+        replace_tupleref!(ast, e.cond, tupname, vals, sv, 1)
+        e.cond = replace_1_tupleref(ast, e.cond, tupname, vals, sv, 1)
+    elseif isa(e,ReturnNode)
+        replace_tupleref!(ast, e.expr, tupname, vals, sv, 1)
+        e.expr = replace_1_tupleref(ast, e.expr, tupname, vals, sv, 1)
+    elseif isa(e,Expr)
+        for i = i0:length(e.args)
+            a = e.args[i]
             replace_tupleref!(ast, a, tupname, vals, sv, 1)
+            e.args[i] = replace_1_tupleref(ast, a, tupname, vals, sv, 1)
         end
     end
 end
