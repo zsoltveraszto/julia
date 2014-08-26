@@ -1961,13 +1961,7 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
     if isconstantfunc(e, sv) !== false
         return true
     end
-    if isa(e,ReturnNode)
-        return effect_free(e.expr,sv,allow_volatile)
-    elseif isa(e,GotoIfNotNode)
-        return effect_free(e.cond,sv,allow_volatile)
-    elseif isa(e,AssignNode)
-        return effect_free(e.rhs,sv,allow_volatile)
-    elseif isa(e,Expr)
+    if isa(e,Expr)
         e = e::Expr
         if e.head === :static_typeof
             return true
@@ -2026,6 +2020,12 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
             end
         end
         return true
+    elseif isa(e,ReturnNode)
+        return effect_free(e.expr,sv,allow_volatile)
+    elseif isa(e,GotoIfNotNode)
+        return effect_free(e.cond,sv,allow_volatile)
+    elseif isa(e,AssignNode)
+        return effect_free(e.rhs,sv,allow_volatile)
     end
     return false
 end
@@ -2547,7 +2547,6 @@ end
 
 const basenumtype = Union(Int32,Int64,Float32,Float64,Complex64,Complex128,Rational)
 
-inlining_pass(e, sv, ast) = (e,())
 function inlining_pass(e::Expr, sv, ast)
     if e.head == :method
         # avoid running the inlining pass on function definitions
@@ -2566,13 +2565,13 @@ function inlining_pass(e::Expr, sv, ast)
             if isa(ei,Expr)
                 res = inlining_pass(ei, sv, ast)
                 eargs[i] = res[1]
-            elseif isa(ei,AssignNode)
+            elseif isa(ei,AssignNode) && isa(ei.rhs,Expr)
                 res = inlining_pass(ei.rhs, sv, ast)
                 ei.rhs = res[1]
-            elseif isa(ei,GotoIfNotNode)
+            elseif isa(ei,GotoIfNotNode) && isa(ei.cond,Expr)
                 res = inlining_pass(ei.cond, sv, ast)
                 ei.cond = res[1]
-            elseif isa(ei,ReturnNode)
+            elseif isa(ei,ReturnNode) && isa(ei.expr,Expr)
                 res = inlining_pass(ei.expr, sv, ast)
                 ei.expr = res[1]
             else
@@ -2980,7 +2979,7 @@ function tupleref_elim_pass(e::Expr, sv)
     end
 end
 
-function elim_1_tupleref(ei, sv)
+function elim_1_tupleref(ei::Expr, sv)
     if is_known_call(ei, tupleref, sv) && length(ei.args)==3 &&
         isa(ei.args[3],Int)
         e1 = ei.args[2]
@@ -3062,8 +3061,8 @@ function tuple_elim_pass(ast::Expr)
     end
 end
 
-function replace_1_tupleref(ast, a::ANY, tupname, vals, sv, i0)
-    if isa(a,Expr) && is_known_call(a, tupleref, sv) && symequal(a.args[2],tupname)
+function replace_1_tupleref(ast, a::Expr, tupname, vals, sv, i0)
+    if is_known_call(a, tupleref, sv) && symequal(a.args[2],tupname)
         val = vals[a.args[3]]
         if isa(val,SymbolNode) && a.typ <: val.typ && !typeseq(a.typ,val.typ)
             # original expression might have better type info than
@@ -3082,21 +3081,23 @@ function replace_1_tupleref(ast, a::ANY, tupname, vals, sv, i0)
 end
 
 function replace_tupleref!(ast, e::ANY, tupname, vals, sv, i0)
-    if isa(e,AssignNode)
-        replace_tupleref!(ast, e.rhs, tupname, vals, sv, 1)
-        e.rhs = replace_1_tupleref(ast, e.rhs, tupname, vals, sv, 1)
-    elseif isa(e,GotoIfNotNode)
-        replace_tupleref!(ast, e.cond, tupname, vals, sv, 1)
-        e.cond = replace_1_tupleref(ast, e.cond, tupname, vals, sv, 1)
-    elseif isa(e,ReturnNode)
-        replace_tupleref!(ast, e.expr, tupname, vals, sv, 1)
-        e.expr = replace_1_tupleref(ast, e.expr, tupname, vals, sv, 1)
-    elseif isa(e,Expr)
+    if isa(e,Expr)
         for i = i0:length(e.args)
             a = e.args[i]
             replace_tupleref!(ast, a, tupname, vals, sv, 1)
-            e.args[i] = replace_1_tupleref(ast, a, tupname, vals, sv, 1)
+            if isa(a,Expr)
+                e.args[i] = replace_1_tupleref(ast, a, tupname, vals, sv, 1)
+            end
         end
+    elseif isa(e,AssignNode) && isa(e.rhs,Expr)
+        replace_tupleref!(ast, e.rhs, tupname, vals, sv, 1)
+        e.rhs = replace_1_tupleref(ast, e.rhs, tupname, vals, sv, 1)
+    elseif isa(e,GotoIfNotNode) && isa(e.cond,Expr)
+        replace_tupleref!(ast, e.cond, tupname, vals, sv, 1)
+        e.cond = replace_1_tupleref(ast, e.cond, tupname, vals, sv, 1)
+    elseif isa(e,ReturnNode) && isa(e.expr,Expr)
+        replace_tupleref!(ast, e.expr, tupname, vals, sv, 1)
+        e.expr = replace_1_tupleref(ast, e.expr, tupname, vals, sv, 1)
     end
 end
 

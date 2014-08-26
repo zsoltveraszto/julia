@@ -31,11 +31,14 @@ copy(e::Expr) = (n = Expr(e.head);
                  n.args = astcopy(e.args);
                  n.typ = e.typ;
                  n)
-copy(s::SymbolNode) = SymbolNode(s.name, s.typ)
-copy(n::GetfieldNode) = GetfieldNode(n.value, n.name, n.typ)
+copy(s::SymbolNode)    = SymbolNode(s.name, s.typ)
+copy(n::GetfieldNode)  = GetfieldNode(n.value, n.name, n.typ)
+copy(a::AssignNode)    = AssignNode(a.lhs, astcopy(a.rhs))
+copy(n::GotoIfNotNode) = GotoIfNotNode(astcopy(n.cond), n.label)
+copy(n::ReturnNode)    = ReturnNode(astcopy(n.expr))
 
 # copy parts of an AST that the compiler mutates
-astcopy(x::Union(SymbolNode,GetfieldNode,Expr)) = copy(x)
+astcopy(x::Union(SymbolNode,GetfieldNode,AssignNode,GotoIfNotNode,ReturnNode,Expr)) = copy(x)
 astcopy(x::Array{Any,1}) = Any[astcopy(a) for a in x]
 astcopy(x) = x
 
