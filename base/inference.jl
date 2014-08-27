@@ -1961,7 +1961,13 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
     if isconstantfunc(e, sv) !== false
         return true
     end
-    if isa(e,Expr)
+    if isa(e,ReturnNode)
+        return effect_free(e.expr,sv,allow_volatile)
+    elseif isa(e,GotoIfNotNode)
+        return effect_free(e.cond,sv,allow_volatile)
+    elseif isa(e,AssignNode)
+        return effect_free(e.rhs,sv,allow_volatile)
+    elseif isa(e,Expr)
         e = e::Expr
         if e.head === :static_typeof
             return true
@@ -2547,6 +2553,7 @@ end
 
 const basenumtype = Union(Int32,Int64,Float32,Float64,Complex64,Complex128,Rational)
 
+inlining_pass(e, sv, ast) = (e,())
 function inlining_pass(e::Expr, sv, ast)
     if e.head == :method
         # avoid running the inlining pass on function definitions
