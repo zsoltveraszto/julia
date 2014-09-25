@@ -42,7 +42,7 @@ immutable ContiguousView{T,N,Arr<:Array{T}} <: ArrayView{T,N,N}
     shp::NTuple{N,Int}
 end
 
-contiguous_view{T,N}(arr::Array{T}, offset::Int, shp::NTuple{N,Int}) = 
+contiguous_view{T,N,M}(arr::Array{T}, offset::Integer, shp::NTuple{N,M}) = 
     ContiguousView{T,N,typeof(arr)}(arr, offset, prod(shp), shp)
 
 contiguous_view(arr::Array, shp::Dims) = contiguous_view(arr, 0, shp)
@@ -583,7 +583,7 @@ _vstrides{N}(ss::NTuple{N,Int}, k::Int, i1::Subs, i2::Subs, i3::Subs, I::Subs...
 
 ##### View construction ######
 
-make_view{N}(a::DenseArray, cr::Type{ContRank{N}}, shp::NTuple{N,Int}, i::Subs) = 
+make_view{N,T<:Integer}(a::DenseArray, cr::Type{ContRank{N}}, shp::NTuple{N,T}, i::Subs) = 
     contiguous_view(parent(a), aoffset(a, i), shp)
 
 make_view{N}(a::DenseArray, cr::Type{ContRank{N}}, shp::NTuple{N,Int}, i1::Subs, i2::Subs) = 
@@ -616,19 +616,19 @@ make_view{M,N}(a::DenseArray, cr::Type{ContRank{M}}, shp::NTuple{N,Int}, i1::Sub
 view(a::Array) = contiguous_view(a, size(a))
 view(a::ArrayView) = a
 
-view(a::DenseArray, i::Subs) = 
+getindex(a::DenseArray, i::Subs) = 
     (shp = vshape(a, i); make_view(a, restrict_crank(acontrank(a, i), shp), shp, i))
 
-view(a::DenseArray, i1::Subs, i2::Subs) = 
+getindex(a::DenseArray, i1::Subs, i2::Subs) = 
     (shp = vshape(a, i1, i2); make_view(a, restrict_crank(acontrank(a, i1, i2), shp), shp, i1, i2))
 
-view(a::DenseArray, i1::Subs, i2::Subs, i3::Subs) = 
+getindex(a::DenseArray, i1::Subs, i2::Subs, i3::Subs) = 
     (shp = vshape(a, i1, i2, i3); make_view(a, restrict_crank(acontrank(a, i1, i2, i3), shp), shp, i1, i2, i3))
 
-view(a::DenseArray, i1::Subs, i2::Subs, i3::Subs, i4::Subs) = 
+getindex(a::DenseArray, i1::Subs, i2::Subs, i3::Subs, i4::Subs) = 
     (shp = vshape(a, i1, i2, i3, i4); make_view(a, restrict_crank(acontrank(a, i1, i2, i3, i4), shp), shp, i1, i2, i3, i4))
 
-view(a::DenseArray, i1::Subs, i2::Subs, i3::Subs, i4::Subs, i5::Subs, I::Subs...) = 
+getindex(a::DenseArray, i1::Subs, i2::Subs, i3::Subs, i4::Subs, i5::Subs, I::Subs...) = 
     (shp = vshape(a, i1, i2, i3, i4, i5, I...); 
      make_view(a, restrict_crank(acontrank(a, i1, i2, i3, i4, i5, I...), shp), shp, i1, i2, i3, i4, i5, I...))
 
@@ -670,7 +670,7 @@ minrank{N}(::Type{ContRank{N}}, ::Type{ContRank{0}}) = ContRank{0}
 
 for m=0:4, n=0:4
     global restrict_crank
-    @eval restrict_crank(::Type{ContRank{$m}}, ::NTuple{$n,Int}) = ContRank{$(min(m,n))}
+    @eval restrict_crank{T<:Integer}(::Type{ContRank{$m}}, ::NTuple{$n,T}) = ContRank{$(min(m,n))}
 end
 
 restrict_crank{M,N}(::Type{ContRank{M}}, ::NTuple{N,Int}) = ContRank{min(M,N)}
@@ -738,6 +738,6 @@ acontrank{T,N,M}(a::ArrayView{T,N,M}, i1::Subs, i2::Subs, i3::Subs, i4::Subs, i5
 
 # Added by Andreas Noack 24 September 2014 when including this in Base
 getindex{T,N}(A::ArrayView{T,N}, I::AbstractArray{Bool,N}) = getindex_bool_1d(A, I)
-getindex(A::ArrayView, I::Subs...) = view(A, I...)
+# getindex(A::ArrayView, I::Subs...) = view(A, I...)
 
 end  # module ArrayViews
