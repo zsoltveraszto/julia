@@ -1343,8 +1343,10 @@ function ctranspose(A::StridedMatrix)
 end
 ctranspose{T<:Real}(A::StridedVecOrMat{T}) = transpose(A)
 
-transpose(x::StridedVector) = [ transpose(x[j]) for i=1, j=1:size(x,1) ]
-ctranspose{T}(x::StridedVector{T}) = T[ ctranspose(x[j]) for i=1, j=1:size(x,1) ]
+transpose(x::AbstractVector) = x
+ctranspose(x::AbstractVector) = x
+# transpose(x::StridedVector) = [ transpose(x[j]) for i=1, j=1:size(x,1) ]
+# ctranspose{T}(x::StridedVector{T}) = T[ ctranspose(x[j]) for i=1, j=1:size(x,1) ]
 
 # set-like operators for vectors
 # These are moderately efficient, preserve order, and remove dupes.

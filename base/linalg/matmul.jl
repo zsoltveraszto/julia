@@ -51,16 +51,23 @@ function dot(x::AbstractVector, y::AbstractVector)
     if lx == 0
         return zero(eltype(x))*zero(eltype(y))
     end
-    s = conj(x[1])*y[1]
+    s = x[1]'y[1]
     @inbounds for i = 2:lx
-        s += conj(x[i])*y[i]
+        s += x[i]'y[i]
     end
     s
 end
 dot(x::Number, y::Number) = conj(x) * y
-Ac_mul_B(x::AbstractVector, y::AbstractVector) = [dot(x, y)]
-At_mul_B{T<:Real}(x::AbstractVector{T}, y::AbstractVector{T}) = [dot(x, y)]
-At_mul_B{T<:BlasComplex}(x::StridedVector{T}, y::StridedVector{T}) = [BLAS.dotu(x, y)]
+*(x::AbstractVector, y::AbstractVector) = dot(x, y)
+Ac_mul_B(x::AbstractVector, y::AbstractVector) = dot(x, y)
+At_mul_B(x::AbstractVector, y::AbstractVector) = dot(x, y)
+# At_mul_B{T<:Real}(x::AbstractVector{T}, y::AbstractVector{T}) = dot(x, y)
+# At_mul_B{T<:BlasComplex}(x::StridedVector{T}, y::StridedVector{T}) = [BLAS.dotu(x, y)]
+
+# Vector-mat
+# (*)(A::AbstractVector, B::AbstractMatrix) = reshape(A,length(A),1)*B
+*(x::AbstractVector, A::AbstractMatrix) = Ac_mul_B(A, x)
+Ac_mul_B(x::AbstractVector, A::AbstractMatrix) = Ac_mul_B(A, x)
 
 # Matrix-vector multiplication
 function (*){T<:BlasFloat,S}(A::StridedMatrix{T}, x::StridedVector{S})
@@ -71,7 +78,6 @@ function (*){T,S}(A::AbstractMatrix{T}, x::AbstractVector{S})
     TS = promote_type(arithtype(T),arithtype(S))
     A_mul_B!(similar(x,TS,size(A,1)),A,x)
 end
-(*)(A::AbstractVector, B::AbstractMatrix) = reshape(A,length(A),1)*B
 
 A_mul_B!{T<:BlasFloat}(y::StridedVector{T}, A::StridedVecOrMat{T}, x::StridedVector{T}) = gemv!(y, 'N', A, x)
 for elty in (Float32,Float64)
