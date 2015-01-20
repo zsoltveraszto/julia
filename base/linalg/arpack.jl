@@ -1,34 +1,55 @@
 module ARPACK
 
-import ..LinAlg: BlasInt, blas_int, ARPACKException
+import ..LinAlg: BlasInt, BlasFloat, blas_int, ARPACKException
 
 ## aupd and eupd wrappers
 
-function aupd_wrapper(T, matvecA::Function, matvecB::Function, solveSI::Function, n::Integer,
-                      sym::Bool, cmplx::Bool, bmat::ASCIIString,
-                      nev::Integer, ncv::Integer, which::ASCIIString,
-                      tol::Real, maxiter::Integer, mode::Integer, v0::Vector)
+function aupd_wrapper{T<:BlasFloat}(::Type{T}, matvecA::Function,
+                                    matvecB::Function, solveSI::Function,
+                                    n::Integer, sym::Bool, cmplx::Bool,
+                                    bmat::ASCIIString, nev::Integer, ncv::Integer,
+                                    which::ASCIIString, tol::Real, maxiter::Integer,
+                                    mode::Integer, v0::Vector)
+    if cmplx
+        lworkl = ncv * (3*ncv + 5)
+        TR = typeof(real(one(T)))
+    elseif sym
+        lworkl = ncv * (ncv + 8)
+        TR = T
+    else
+        lworkl = ncv * (3*ncv + 6)
+        TR = T
+    end
 
-    lworkl = cmplx ? ncv * (3*ncv + 5) : (sym ? ncv * (ncv + 8) :  ncv * (3*ncv + 6) )
-    TR = cmplx ? T.types[1] : T
     TOL = Array(TR, 1)
     TOL[1] = tol
 
-    v      = Array(T, n, ncv)
-    workd  = Array(T, 3*n)
-    workl  = Array(T, lworkl)
-    rwork  = cmplx ? Array(TR, ncv) : Array(TR, 0)
+    v = Array(T, n, ncv)
+    workd = Array(T, 3*n)
+    workl = Array(T, lworkl)
+
+    if cmplx
+        rwork = Array(TR, ncv)
+    else
+        rwork = Array(TR, 0)
+    end
 
     if isempty(v0)
-        resid  = Array(T, n)
-        info   = zeros(BlasInt, 1)
+        resid = Array(T, n)
+        info = zeros(BlasInt, 1)
     else
-        resid  = deepcopy(v0)
-        info   = ones(BlasInt, 1)
+        resid = deepcopy(v0)
+        info = ones(BlasInt, 1)
     end
+
     iparam = zeros(BlasInt, 11)
-    ipntr  = zeros(BlasInt, (sym && !cmplx) ? 11 : 14)
-    ido    = zeros(BlasInt, 1)
+    ido = zeros(BlasInt, 1)
+
+    if sym && !cmplx
+        ipntr = 11
+    else
+        ipntr = 14
+    end
 
     iparam[1] = blas_int(1)       # ishifts
     iparam[3] = blas_int(maxiter) # maxiter
@@ -47,7 +68,6 @@ function aupd_wrapper(T, matvecA::Function, matvecB::Function, solveSI::Function
             naupd(ido, bmat, n, which, nev, TOL, resid, ncv, v, n,
                   iparam, ipntr, workd, workl, lworkl, info)
         end
-
         load_idx = ipntr[1]+zernm1
         store_idx = ipntr[2]+zernm1
         x = workd[load_idx]
@@ -97,19 +117,16 @@ function aupd_wrapper(T, matvecA::Function, matvecB::Function, solveSI::Function
             throw(ArgumentError("ARPACK mode ($mode) not yet supported"))
         end
     end
-
     return (resid, v, n, iparam, ipntr, workd, workl, lworkl, rwork, TOL)
 end
 
-function eupd_wrapper(T, n::Integer, sym::Bool, cmplx::Bool, bmat::ASCIIString,
-                      nev::Integer, which::ASCIIString, ritzvec::Bool,
-                      TOL::Array, resid, ncv::Integer, v, ldv, sigma, iparam, ipntr,
-                      workd, workl, lworkl, rwork)
-
+function eupd_wrapper{T<:BlasFloat}(::Type{T}, n::Integer, sym::Bool, cmplx::Bool, bmat::ASCIIString,
+                                    nev::Integer, which::ASCIIString, ritzvec::Bool,
+                                    TOL::Array, resid, ncv::Integer, v, ldv, sigma, iparam, ipntr,
+                                    workd, workl, lworkl, rwork)
     howmny = "A"
     select = Array(BlasInt, ncv)
     info   = zeros(BlasInt, 1)
-
     dmap = x->abs(x)
     if iparam[7] == 3 # shift-and-invert
         dmap = x->abs(1./(x-sigma))
@@ -124,43 +141,53 @@ function eupd_wrapper(T, n::Integer, sym::Bool, cmplx::Bool, bmat::ASCIIString,
     end
 
     if cmplx
-
         d = Array(T, nev+1)
         sigmar = ones(T, 1)*sigma
         workev = Array(T, 2ncv)
+
         neupd(ritzvec, howmny, select, d, v, ldv, sigmar, workev,
               bmat, n, which, nev, TOL, resid, ncv, v, ldv,
               iparam, ipntr, workd, workl, lworkl, rwork, info)
-        if info[1] != 0; throw(ARPACKException(info[1])); end
+
+        if info[1] != 0
+            throw(ARPACKException(info[1]))
+        end
 
         p = sortperm(dmap(d[1:nev]), rev=true)
-        return ritzvec ? (d[p], v[1:n, p],iparam[5],iparam[3],iparam[9],resid) : (d[p],iparam[5],iparam[3],iparam[9],resid)
-
+        return ritzvec ? (d[p], v[1:n, p],iparam[5],iparam[3],iparam[9],resid) :
+                         (d[p],iparam[5],iparam[3],iparam[9],resid)
     elseif sym
-
         d = Array(T, nev)
         sigmar = ones(T, 1)*sigma
+
         seupd(ritzvec, howmny, select, d, v, ldv, sigmar,
               bmat, n, which, nev, TOL, resid, ncv, v, ldv,
               iparam, ipntr, workd, workl, lworkl, info)
-        if info[1] != 0; throw(ARPACKException(info[1])); end
+
+        if info[1] != 0
+            throw(ARPACKException(info[1]))
+        end
 
         p = sortperm(dmap(d), rev=true)
-        return ritzvec ? (d[p], v[1:n, p],iparam[5],iparam[3],iparam[9],resid) : (d,iparam[5],iparam[3],iparam[9],resid)
-
+        return ritzvec ? (d[p], v[1:n, p],iparam[5],iparam[3],iparam[9],resid) :
+                         (d,iparam[5],iparam[3],iparam[9],resid)
     else
-
-        dr     = Array(T, nev+1)
-        di     = Array(T, nev+1)
-        fill!(dr,NaN)
-        fill!(di,NaN)
-        sigmar = ones(T, 1)*real(sigma)
-        sigmai = ones(T, 1)*imag(sigma)
+        dr = Array(T, nev+1)
+        di = Array(T, nev+1)
+        fill!(dr, NaN)
+        fill!(di, NaN)
+        sigmar = ones(T, 1) * real(sigma)
+        sigmai = ones(T, 1) * imag(sigma)
         workev = Array(T, 3*ncv)
+
         neupd(ritzvec, howmny, select, dr, di, v, ldv, sigmar, sigmai,
               workev, bmat, n, which, nev, TOL, resid, ncv, v, ldv,
               iparam, ipntr, workd, workl, lworkl, info)
-        if info[1] != 0; throw(ARPACKException(info[1])); end
+
+        if info[1] != 0
+            throw(ARPACKException(info[1]))
+        end
+
         evec = complex(Array(T, n, nev+1), Array(T, n, nev+1))
 
         j = 1
@@ -184,17 +211,15 @@ function eupd_wrapper(T, n::Integer, sym::Bool, cmplx::Bool, bmat::ASCIIString,
         end
 
         d = complex(dr,di)
-
         if j == nev+1
             p = sortperm(dmap(d[1:nev]), rev=true)
         else
             p = sortperm(dmap(d), rev=true)
             p = p[1:nev]
         end
-
-        return ritzvec ? (d[p], evec[1:n, p],iparam[5],iparam[3],iparam[9],resid) : (d[p],iparam[5],iparam[3],iparam[9],resid)
+        return ritzvec ? (d[p], evec[1:n, p], iparam[5], iparam[3], iparam[9], resid) :
+                         (d[p], iparam[5], iparam[3], iparam[9], resid)
     end
-
 end
 
 for (T, saupd_name, seupd_name, naupd_name, neupd_name) in
@@ -290,7 +315,6 @@ for (T, TR, naupd_name, neupd_name) in
                   &rvec, howmny, select, d, z, &ldz, sigma, workev,
                   bmat, &n, evtype, &nev, TOL, resid, &ncv, v, &ldv,
                   iparam, ipntr, workd, workl, &lworkl, rwork, info)
-
         end
 
     end

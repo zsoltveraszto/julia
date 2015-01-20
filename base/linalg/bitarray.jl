@@ -7,7 +7,7 @@ function dot(x::BitVector, y::BitVector)
     @inbounds for i = 1 : length(xc)
         s += count_ones(xc[i] & yc[i])
     end
-    s
+    return s
 end
 
 ## slower than the unpacked version, which is MUCH slower
@@ -49,7 +49,7 @@ function triu(B::BitMatrix, k::Integer=0)
         j = clamp((i - 1) * m + 1, 1, i * m)
         Base.copy_chunks!(Ac, j, Bc, j, min(i-k, m))
     end
-    A
+    return A
 end
 
 function tril(B::BitMatrix, k::Integer=0)
@@ -61,7 +61,7 @@ function tril(B::BitMatrix, k::Integer=0)
         j = clamp((i - 1) * m + i - k, 1, i * m)
         Base.copy_chunks!(Ac, j, Bc, j, max(m-i+k+1, 0))
     end
-    A
+    return A
 end
 
 ## diff and gradient
@@ -81,17 +81,21 @@ function diag(B::BitMatrix)
     for i = 1:n
         v[i] = B[i,i]
     end
-    v
+    return v
 end
 
 function diagm(v::Union(BitVector,BitMatrix))
-    isa(v, BitMatrix) && size(v,1)==1 || size(v,2)==1 || throw(DimensionMismatch())
+    if isa(v, BitMatrix)
+        if size(v,1) != 1 || size(v,2) != 1
+            throw(DimensionMismatch())
+        end
+    end
     n = length(v)
     a = falses(n, n)
     for i=1:n
         a[i,i] = v[i]
     end
-    a
+    return a
 end
 
 ## norm and rank
@@ -108,16 +112,17 @@ function kron(a::BitVector, b::BitVector)
     Rc = R.chunks
     bc = b.chunks
     for j = 1:m
-        a[j] && Base.copy_chunks!(Rc, (j-1)*n+1, bc, 1, n)
+        if a[j]
+            Base.copy_chunks!(Rc, (j-1)*n+1, bc, 1, n)
+        end
     end
-    R
+    return R
 end
 
 function kron(a::BitMatrix, b::BitMatrix)
     mA,nA = size(a)
     mB,nB = size(b)
     R = falses(mA*mB, nA*nB)
-
     for i = 1:mA
         ri = (1:mB)+(i-1)*mB
         for j = 1:nA
@@ -127,12 +132,12 @@ function kron(a::BitMatrix, b::BitMatrix)
             end
         end
     end
-    R
+    return R
 end
 
 ## Structure query functions
 
-issym(A::BitMatrix) = size(A, 1)==size(A, 2) && countnz(A - A.')==0
+issym(A::BitMatrix) = (size(A, 1) == size(A, 2)) && (countnz(A - A.') == 0)
 ishermitian(A::BitMatrix) = issym(A)
 
 function nonzero_chunks(chunks::Vector{UInt64}, pos0::Int, pos1::Int)
@@ -151,12 +156,20 @@ function nonzero_chunks(chunks::Vector{UInt64}, pos0::Int, pos1::Int)
     end
 
     @inbounds begin
-        (chunks[k0] & msk_0) == z || return true
-        delta_k == 0 && return false
-        for i = k0 + 1 : k1 - 1
-            chunks[i] == z || return true
+        if (chunks[k0] & msk_0) != z
+            return true
         end
-        (chunks[k1] & msk_1)==z || return true
+        if delta_k == 0
+            return false
+        end
+        for i = k0 + 1 : k1 - 1
+            if chunks[i] != z
+                return true
+            end
+        end
+        if (chunks[k1] & msk_1) != z
+            return true
+        end
     end
     return false
 end
@@ -165,47 +178,63 @@ function istriu(A::BitMatrix)
     m, n = size(A)
     for j = 1:min(n,m-1)
         stride = (j-1)*m
-        nonzero_chunks(A.chunks, stride+j+1, stride+m) && return false
+        if nonzero_chunks(A.chunks, stride+j+1, stride+m)
+            return false
+        end
     end
     return true
 end
 
 function istril(A::BitMatrix)
     m, n = size(A)
-    (m == 0 || n == 0) && return true
+    if m == 0 || n == 0
+        return true
+    end
     for j = 2:n
         stride = (j-1)*m
-        nonzero_chunks(A.chunks, stride+1, stride+min(j-1,m)) && return false
+        if nonzero_chunks(A.chunks, stride+1, stride+min(j-1,m))
+            return false
+        end
     end
     return true
 end
 
 function findmax(a::BitArray)
-    isempty(a) && throw(ArgumentError("BitArray must be non-empty"))
+    if isempty(a)
+        throw(ArgumentError("BitArray must be non-empty"))
+    end
     m, mi = false, 1
     ti = 1
     ac = a.chunks
     for i=1:length(ac)
         @inbounds k = trailing_zeros(ac[i])
         ti += k
-        k==64 || return (true, ti)
+        if k != 64
+            return (true, ti)
+        end
     end
     return m, mi
 end
 
 function findmin(a::BitArray)
-    isempty(a) && throw(ArgumentError("BitArray must be non-empty"))
+    if isempty(a)
+        throw(ArgumentError("BitArray must be non-empty"))
+    end
     m, mi = true, 1
     ti = 1
     ac = a.chunks
     for i = 1:length(ac)-1
         @inbounds k = trailing_ones(ac[i])
         ti += k
-        k==64 || return (false, ti)
+        if k != 64
+            return (false, ti)
+        end
     end
     l = Base._mod64(length(a)-1) + 1
     @inbounds k = trailing_ones(ac[end] & Base._msk_end(l))
     ti += k
-    k==l || return (false, ri)
+    if k != l
+        return (false, ri)
+    end
     return m, mi
 end

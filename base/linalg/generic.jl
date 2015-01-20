@@ -6,7 +6,7 @@ scale(s::Number, X::AbstractArray) = scale!(copy(X), s)
 function scale{R<:Real,S<:Complex}(X::AbstractArray{R}, s::S)
     Y = Array(promote_type(R,S), size(X))
     copy!(Y, X)
-    scale!(Y, s)
+    return scale!(Y, s)
 end
 
 scale{R<:Real}(s::Complex, X::AbstractArray{R}) = scale(X, s)
@@ -17,22 +17,28 @@ function generic_scale!(X::AbstractArray, s::Number)
     for i = 1:length(X)
         @inbounds X[i] *= s
     end
-    X
+    return X
 end
 
 function generic_scale!(C::AbstractArray, X::AbstractArray, s::Number)
-    length(C) == length(X) || throw(DimensionMismatch("first array argument must be the same length as the second array argument"))
+    if length(C) != length(X)
+        throw(DimensionMismatch(
+            string("first array argument must be the same length ",
+                   "as the second array argument")))
+    end
     for i = 1:length(X)
         @inbounds C[i] = X[i]*s
     end
-    C
+    return C
 end
+
 scale!(C::AbstractArray, s::Number, X::AbstractArray) = generic_scale!(C, X, s)
 scale!(C::AbstractArray, X::AbstractArray, s::Number) = generic_scale!(C, X, s)
 scale!(X::AbstractArray, s::Number) = generic_scale!(X, s)
 scale!(s::Number, X::AbstractArray) = generic_scale!(X, s)
 
-cross(a::AbstractVector, b::AbstractVector) = [a[2]*b[3]-a[3]*b[2], a[3]*b[1]-a[1]*b[3], a[1]*b[2]-a[2]*b[1]]
+cross(A::AbstractVector, B::AbstractVector) =
+    [A[2]*B[3]-A[3]*B[2], A[3]*B[1]-A[1]*B[3], A[1]*B[2]-A[2]*B[1]]
 
 triu(M::AbstractMatrix) = triu!(copy(M))
 tril(M::AbstractMatrix) = tril!(copy(M))
@@ -40,13 +46,13 @@ triu!(M::AbstractMatrix) = triu!(M,0)
 tril!(M::AbstractMatrix) = tril!(M,0)
 
 diff(a::AbstractMatrix) = diff(a, 1)
-diff(a::AbstractVector) = [ a[i+1] - a[i] for i=1:length(a)-1 ]
+diff(a::AbstractVector) = [a[i+1] - a[i] for i=1:length(a)-1]
 
 function diff(A::AbstractMatrix, dim::Integer)
     if dim == 1
-        [A[i+1,j] - A[i,j] for i=1:size(A,1)-1, j=1:size(A,2)]
+        return [A[i+1,j] - A[i,j] for i=1:size(A,1)-1, j=1:size(A,2)]
     elseif dim == 2
-        [A[i,j+1] - A[i,j] for i=1:size(A,1), j=1:size(A,2)-1]
+        return [A[i,j+1] - A[i,j] for i=1:size(A,1), j=1:size(A,2)-1]
     else
         throw(ArgumentError("dimension dim must be 1 or 2, got $dim"))
     end
@@ -56,7 +62,8 @@ end
 gradient(F::AbstractVector) = gradient(F, [1:length(F)])
 gradient(F::AbstractVector, h::Real) = gradient(F, [h*(1:length(F))])
 
-diag(A::AbstractVector) = error("use diagm instead of diag to construct a diagonal matrix")
+diag(A::AbstractVector) =
+    error("use diagm instead of diag to construct a diagonal matrix")
 
 #diagm{T}(v::AbstractVecOrMat{T})
 
@@ -98,13 +105,15 @@ end
 
 function generic_vecnorm2(x)
     maxabs = vecnormInf(x)
-    maxabs == 0 && return maxabs
+    if maxabs == 0
+        return maxabs
+    end
     s = start(x)
     (v, s) = next(x, s)
     T = typeof(maxabs)
-    scale::promote_type(Float64, T) = 1/maxabs
+    scale::promote_type(Float64, T) = 1 / maxabs
     y = abs(v)*scale
-    sum::promote_type(Float64, T) = y*y
+    sum::promote_type(Float64, T) = y * y
     while !done(x, s)
         (v, s) = next(x, s)
         y = abs(v)*scale
@@ -116,19 +125,22 @@ end
 function generic_vecnormp(x, p)
     if p > 1 || p < 0 # need to rescale to avoid overflow/underflow
         maxabs = vecnormInf(x)
-        maxabs == 0 && return maxabs
+        if maxabs == 0
+            return maxabs
+        end
         s = start(x)
         (v, s) = next(x, s)
         T = typeof(maxabs)
         spp::promote_type(Float64, T) = p
         scale::promote_type(Float64, T) = 1/maxabs
-        ssum::promote_type(Float64, T) = (abs(v)*scale)^spp
+        ssum::promote_type(Float64, T) = (abs(v) * scale)^spp
         while !done(x, s)
             (v, s) = next(x, s)
-            ssum += (abs(v)*scale)^spp
+            ssum += (abs(v) * scale)^spp
         end
         return convert(T, maxabs * ssum^inv(spp))
-    else # 0 < p < 1, no need for rescaling (but technically not a true norm)
+    else
+        # 0 < p < 1, no need for rescaling (but technically not a true norm)
         s = start(x)
         (v, s) = next(x, s)
         av = float(abs(v))
@@ -150,16 +162,32 @@ vecnorm2(x) = generic_vecnorm2(x)
 vecnormp(x, p) = generic_vecnormp(x, p)
 
 function vecnorm(itr, p::Real=2)
-    isempty(itr) && return float(real(zero(eltype(itr))))
-    p == 2 && return vecnorm2(itr)
-    p == 1 && return vecnorm1(itr)
-    p == Inf && return vecnormInf(itr)
-    p == 0 && return convert(typeof(float(real(zero(eltype(itr))))),
-                             countnz(itr))
-    p == -Inf && return vecnormMinusInf(itr)
-    vecnormp(itr,p)
+    if isempty(itr)
+        return float(real(zero(eltype(itr))))
+    elseif p == 2
+        return vecnorm2(itr)
+    elseif p == 1
+        return vecnorm1(itr)
+    elseif p == Inf
+        return vecnormInf(itr)
+    elseif p == 0
+        return convert(typeof(float(real(zero(eltype(itr))))), countnz(itr))
+    elseif p == -Inf
+        return vecnormMinusInf(itr)
+    else
+        return vecnormp(itr,p)
+    end
 end
-vecnorm(x::Number, p::Real=2) = p == 0 ? real(x==0 ? zero(x) : one(x)) : abs(x)
+
+function vecnorm(x::Number, p::Real=2)
+    if p == 0 && x == 0
+        return real(zero(x))
+    elseif p == 0
+        return real(one(x))
+    else
+        return abs(x)
+    end
+end
 
 norm(x::AbstractVector, p::Real=2) = vecnorm(x, p)
 
@@ -179,12 +207,19 @@ function norm1{T}(A::AbstractMatrix{T})
     end
     return convert(Tnorm, nrm)
 end
+
 function norm2{T}(A::AbstractMatrix{T})
     m,n = size(A)
-    if m == 1 || n == 1 return vecnorm2(A) end
+    if m == 1 || n == 1
+        return vecnorm2(A)
+    end
     Tnorm = typeof(float(real(zero(T))))
-    (m == 0 || n == 0) ? zero(Tnorm) : convert(Tnorm, svdvals(A)[1])
+    if m == 0 || n == 0
+        return zero(Tnorm)
+    end
+    return convert(Tnorm, svdvals(A)[1])
 end
+
 function normInf{T}(A::AbstractMatrix{T})
     m,n = size(A)
     Tnorm = typeof(float(real(zero(T))))
@@ -201,28 +236,46 @@ function normInf{T}(A::AbstractMatrix{T})
     end
     return convert(Tnorm, nrm)
 end
+
 function norm{T}(A::AbstractMatrix{T}, p::Real=2)
-    p == 2 && return norm2(A)
-    p == 1 && return norm1(A)
-    p == Inf && return normInf(A)
+    if p == 2
+        return norm2(A)
+    elseif p == 1
+        return return norm1(A)
+    elseif p == Inf
+        return normInf(A)
+    end
     throw(ArgumentError("invalid p-norm p=$p. Valid: 1, 2, Inf"))
 end
 
-norm(x::Number, p::Real=2) =
-    p == 0 ? convert(typeof(real(x)), ifelse(x != 0, 1, 0)) : abs(x)
+function norm(x::Number, p::Real=2)
+    if p == 0
+        return convert(typeof(real(x)), ifelse(x != 0, 1, 0))
+    else
+        return abs(x)
+    end
+end
 
-rank(A::AbstractMatrix, tol::Real) = sum(svdvals(A) .> tol)
 function rank(A::AbstractMatrix)
     m,n = size(A)
-    (m == 0 || n == 0) && return 0
+    if m == 0 || n == 0
+        return 0
+    end
     sv = svdvals(A)
-    return sum(sv .> maximum(size(A))*eps(sv[1]))
+    return sum(sv .> maximum(size(A)) * eps(sv[1]))
 end
-rank(x::Number) = x==0 ? 0 : 1
+rank(A::AbstractMatrix, tol::Real) = sum(svdvals(A) .> tol)
+function rank(x::Number)
+    if x == 0
+        return 0
+    else
+        return 1
+    end
+end
 
 function trace(A::AbstractMatrix)
     chksquare(A)
-    sum(diag(A))
+    return sum(diag(A))
 end
 trace(x::Number) = x
 
@@ -231,34 +284,68 @@ trace(x::Number) = x
 
 #det(a::AbstractMatrix)
 
-inv(a::StridedMatrix) = error("argument must be a square matrix")
 function inv{T}(A::AbstractMatrix{T})
-    S = typeof(zero(T)/one(T))
-    A_ldiv_B!(factorize(convert(AbstractMatrix{S}, A)), eye(S, chksquare(A)))
+    S = typeof(zero(T) / one(T))
+    return A_ldiv_B!(factorize(convert(AbstractMatrix{S}, A)),
+                     eye(S, chksquare(A)))
 end
+inv(a::StridedMatrix) = error("argument must be a square matrix")
 
-function \{TA,TB}(A::AbstractMatrix{TA}, B::AbstractVecOrMat{TB})
-    TC = typeof(one(TA)/one(TB))
-    size(A,1) == size(B,1) || throw(DimensionMismatch("LHS and RHS should have the same number of rows. LHS has $(size(A,1)) rows, but RHS has $(size(B,1)) rows."))
-    A_ldiv_B!(factorize(TA == TC ? copy(A) : convert(AbstractMatrix{TC}, A)), TB == TC ? copy(B) : convert(AbstractArray{TC}, B))
+function (\){TA,TB}(A::AbstractMatrix{TA}, B::AbstractVecOrMat{TB})
+    TC = typeof(one(TA) / one(TB))
+    if size(A,1) != size(B,1)
+        throw(DimensionMismatch(
+            string("LHS and RHS should have the same number of rows. ",
+                    "LHS has $(size(A,1)) rows, but RHS has $(size(B,1)) rows.")))
+    end
+    if TA == TC && TB == TC
+        return A_ldiv_B!(factorize(copy(A)), copy(B))
+    elseif TA == TC
+        return A_ldiv_B!(factorize(copy(A)),
+                         convert(AbstractArray{TC}, B))
+    elseif TB == TC
+        return A_ldiv_B!(factorize(convert(AbstractMatrix{TC}, A)),
+                         copy(B))
+    else
+        return A_ldiv_B!(factorize(convert(AbstractMatrix{TC}, A)),
+                         convert(AbstractArray{TC}, B))
+    end
 end
-\(a::AbstractVector, b::AbstractArray) = reshape(a, length(a), 1) \ b
-/(A::AbstractVecOrMat, B::AbstractVecOrMat) = (B' \ A')'
-# \(A::StridedMatrix,x::Number) = inv(A)*x Should be added at some point when the old elementwise version has been deprecated long enough
+(\)(a::AbstractVector, b::AbstractArray) = reshape(a, length(a), 1) \ b
+(/)(A::AbstractVecOrMat, B::AbstractVecOrMat) = (B' \ A')'
+
+# Should be added at some point when the old elementwise
+# version has been deprecated long enough
+# \(A::StridedMatrix,x::Number) = inv(A)*x
 # /(x::Number,A::StridedMatrix) = x*inv(A)
 
-cond(x::Number) = x == 0 ? Inf : 1.0
+function cond(x::Number)
+    if x == 0
+        return Inf
+    else
+        return 1.0
+    end
+end
 cond(x::Number, p) = cond(x)
 
 #Skeel condition numbers
-condskeel(A::AbstractMatrix, p::Real=Inf) = norm(abs(inv(A))*abs(A), p)
-condskeel{T<:Integer}(A::AbstractMatrix{T}, p::Real=Inf) = norm(abs(inv(float(A)))*abs(A), p)
-condskeel(A::AbstractMatrix, x::AbstractVector, p::Real=Inf) = norm(abs(inv(A))*abs(A)*abs(x), p)
-condskeel{T<:Integer}(A::AbstractMatrix{T}, x::AbstractVector, p::Real=Inf) = norm(abs(inv(float(A)))*abs(A)*abs(x), p)
+condskeel(A::AbstractMatrix, p::Real=Inf) =
+    norm(abs(inv(A)) * abs(A), p)
+
+condskeel{T<:Integer}(A::AbstractMatrix{T}, p::Real=Inf) =
+    norm(abs(inv(float(A))) * abs(A), p)
+
+condskeel(A::AbstractMatrix, x::AbstractVector, p::Real=Inf) =
+    norm(abs(inv(A)) * abs(A) * abs(x), p)
+
+condskeel{T<:Integer}(A::AbstractMatrix{T}, x::AbstractVector, p::Real=Inf) =
+    norm(abs(inv(float(A))) * abs(A) * abs(x), p)
 
 function issym(A::AbstractMatrix)
     m, n = size(A)
-    m==n || return false
+    if m != n
+        return false
+    end
     for i = 1:(n-1), j = (i+1):n
         if A[i,j] != transpose(A[j,i])
             return false
@@ -271,7 +358,9 @@ issym(x::Number) = true
 
 function ishermitian(A::AbstractMatrix)
     m, n = size(A)
-    m==n || return false
+    if m != n
+        return false
+    end
     for i = 1:n, j = i:n
         if A[i,j] != ctranspose(A[j,i])
             return false
@@ -305,12 +394,15 @@ end
 istriu(x::Number) = true
 istril(x::Number) = true
 
-linreg{T<:Number}(X::StridedVecOrMat{T}, y::Vector{T}) = [ones(T, size(X,1)) X] \ y
+linreg{T<:Number}(X::StridedVecOrMat{T}, y::Vector{T}) =
+    hcat(ones(T, size(X,1)), X) \ y
 
 # weighted least squares
-function linreg(x::AbstractVector, y::AbstractVector, w::AbstractVector)
+function linreg(x::AbstractVector,
+                y::AbstractVector,
+                w::AbstractVector)
     sw = sqrt(w)
-    [sw sw.*x] \ (sw.*y)
+    return hcat(sw, sw .* x) \ (sw.*y)
 end
 
 # multiply by diagonal matrix as vector
@@ -334,35 +426,58 @@ function peakflops(n::Integer=2000; parallel::Bool=false)
     t = @elapsed a*a
     a = rand(n,n)
     t = @elapsed a*a
-    parallel ? sum(pmap(peakflops, [ n for i in 1:nworkers()])) : (2*float64(n)^3/t)
+    if parallel
+        return sum(pmap(peakflops, [ n for i in 1:nworkers()]))
+    else
+        return (2*float64(n)^3/t)
+    end
 end
 
 # BLAS-like in-place y=alpha*x+y function (see also the version in blas.jl
 #                                          for BlasFloat Arrays)
-function axpy!(alpha, x::AbstractArray, y::AbstractArray)
-    n = length(x)
-    n==length(y) || throw(DimensionMismatch())
-    for i = 1:n
-        @inbounds y[i] += alpha * x[i]
+function axpy!(alpha, X::AbstractArray, Y::AbstractArray)
+    n = length(X)
+    if n != length(Y)
+        throw(DimensionMismatch())
     end
-    y
+    for i = 1:n
+        @inbounds Y[i] += alpha * X[i]
+    end
+    return Y
 end
-function axpy!{Ti<:Integer,Tj<:Integer}(alpha, x::AbstractArray, rx::AbstractArray{Ti}, y::AbstractArray, ry::AbstractArray{Tj})
-    length(x)==length(y) || throw(DimensionMismatch())
-    if minimum(rx) < 1 || maximum(rx) > length(x) || minimum(ry) < 1 || maximum(ry) > length(y) || length(rx) != length(ry)
+
+function axpy!{Ti<:Integer,Tj<:Integer}(alpha,
+                                        X::AbstractArray,
+                                        rx::AbstractArray{Ti},
+                                        Y::AbstractArray,
+                                        ry::AbstractArray{Tj})
+    if length(X) != length(Y)
+        throw(DimensionMismatch())
+    end
+    if (minimum(rx) < 1 || maximum(rx) > length(X) ||
+        minimum(ry) < 1 || maximum(ry) > length(Y) ||
+        length(rx) != length(ry))
         throw(BoundsError())
     end
     for i = 1:length(rx)
-        @inbounds y[ry[i]] += alpha * x[rx[i]]
+        @inbounds Y[ry[i]] += alpha * X[rx[i]]
     end
-    y
+    return Y
 end
 
-# Elementary reflection similar to LAPACK. The reflector is not Hermitian but ensures that tridiagonalization of Hermitian matrices become real. See lawn72
+# Elementary reflection similar to LAPACK.
+# The reflector is not Hermitian but ensures that
+# tridiagonalization of Hermitian matrices become real. See lawn72
 function elementaryLeft!(A::AbstractMatrix, row::Integer, col::Integer)
     m, n = size(A)
-    1 <= row <= m || throw(BoundsError("row cannot be less than one or larger than $(size(A,1))"))
-    1 <= col <= n || throw(BoundsError("col cannot be less than one or larger than $(size(A,2))"))
+    if !(1 <= row <= m)
+        throw(BoundsError(
+            "row cannot be less than one or larger than $(size(A,1))"))
+    end
+    if !(1 <= col <= n)
+        throw(BoundsError(
+            "col cannot be less than one or larger than $(size(A,2))"))
+    end
     @inbounds begin
         ξ1 = A[row,col]
         normu = abs2(ξ1)
@@ -378,13 +493,23 @@ function elementaryLeft!(A::AbstractMatrix, row::Integer, col::Integer)
             A[i,col] /= ξ1
         end
     end
-    ξ1/ν
+    return ξ1/ν
 end
+
 function elementaryRight!(A::AbstractMatrix, row::Integer, col::Integer)
     m, n = size(A)
-    1 <= row <= m || throw(BoundsError("row cannot be less than one or larger than $(size(A,1))"))
-    1 <= col <= n || throw(BoundsError("col cannot be less than one or larger than $(size(A,2))"))
-    row <= col || error("col cannot be larger than row")
+    if !(1 <= row <= m)
+        throw(BoundsError(
+            "row cannot be less than one or larger than $(size(A,1))"))
+    end
+    if !(1 <= col <= n)
+        throw(BoundsError(
+            "col cannot be less than one or larger than $(size(A,2))"))
+    end
+    if col > row
+        throw(BoundsError(
+            "col cannot be larger than row"))
+    end
     @inbounds begin
         ξ1 = A[row,col]
         normu = abs2(ξ1)
@@ -400,11 +525,15 @@ function elementaryRight!(A::AbstractMatrix, row::Integer, col::Integer)
             A[row,i] /= ξ1
         end
     end
-    conj(ξ1/ν)
+    return conj(ξ1/ν)
 end
+
 function elementaryRightTrapezoid!(A::AbstractMatrix, row::Integer)
     m, n = size(A)
-    1 <= row <= m || throw(BoundsError("row cannot be less than one or larger than $(size(A,1))"))
+    if !(1 <= row <= m)
+        throw(BoundsError(
+            "row cannot be less than one or larger than $(size(A,1))"))
+    end
     @inbounds begin
         ξ1 = A[row,row]
         normu = abs2(A[row,row])
@@ -420,11 +549,13 @@ function elementaryRightTrapezoid!(A::AbstractMatrix, row::Integer)
             A[row,i] /= ξ1
         end
     end
-    conj(ξ1/ν)
+    return conj(ξ1/ν)
 end
 
 function det(A::AbstractMatrix)
-    (istriu(A) || istril(A)) && return det(UpperTriangular(A))
+    if istriu(A) || istril(A)
+        return det(UpperTriangular(A))
+    end
     return det(lufact(A))
 end
 det(x::Number) = x

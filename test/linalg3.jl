@@ -1,6 +1,7 @@
 ## Least squares solutions
 a = [ones(20) 1:20 1:20]
 b = reshape(eye(8, 5), 20, 2)
+
 for elty in (Float32, Float64, Complex64, Complex128)
     a = convert(Matrix{elty}, a)
     b = convert(Matrix{elty}, b)

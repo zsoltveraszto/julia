@@ -5,12 +5,16 @@ end
 size(S::LDLt) = size(S.data)
 size(S::LDLt, i::Integer) = size(S.data, i)
 
-convert{T,S}(::Type{LDLt{T,S}}, F::LDLt) = LDLt{T,S}(convert(S, F.data))
+convert{T,S}(::Type{LDLt{T,S}}, F::LDLt) =
+    LDLt{T,S}(convert(S, F.data))
+
 # NOTE: the annotaion <:AbstractMatrix shouldn't be necessary, it is introduced
 #       to avoid an ambiguity warning (see issue #6383)
-convert{T,S,U<:AbstractMatrix}(::Type{LDLt{T}}, F::LDLt{S,U}) = convert(LDLt{T,U}, F)
+convert{T,S,U<:AbstractMatrix}(::Type{LDLt{T}}, F::LDLt{S,U}) =
+    convert(LDLt{T,U}, F)
 
-convert{T,S,U}(::Type{Factorization{T}}, F::LDLt{S,U}) = convert(LDLt{T,U}, F)
+convert{T,S,U}(::Type{Factorization{T}}, F::LDLt{S,U}) =
+    convert(LDLt{T,U}, F)
 
 # SymTridiagonal
 function ldltfact!{T<:Real}(S::SymTridiagonal{T})
@@ -23,16 +27,23 @@ function ldltfact!{T<:Real}(S::SymTridiagonal{T})
     end
     return LDLt{T,SymTridiagonal{T}}(S)
 end
+
 function ldltfact{T}(M::SymTridiagonal{T})
-    S = typeof(zero(T)/one(T))
-    return S == T ? ldltfact!(copy(M)) : ldltfact!(convert(SymTridiagonal{S}, M))
+    S = typeof(zero(T) / one(T))
+    if S == T
+        return ldltfact!(copy(M))
+    else
+        return ldltfact!(convert(SymTridiagonal{S}, M))
+    end
 end
 
 factorize(S::SymTridiagonal) = ldltfact(S)
 
 function A_ldiv_B!{T}(S::LDLt{T,SymTridiagonal{T}}, B::AbstractVecOrMat{T})
     n, nrhs = size(B, 1), size(B, 2)
-    size(S,1) == n || throw(DimensionMismatch())
+    if size(S,1) != n
+        throw(DimensionMismatch())
+    end
     d = S.data.dv
     l = S.data.ev
     @inbounds begin

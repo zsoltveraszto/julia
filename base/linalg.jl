@@ -146,6 +146,11 @@ export
 # Constants
     I
 
+# Abstract Types
+abstract Factorization{T}
+abstract AbstractRotation{T}
+
+# Typealiases
 typealias BlasFloat Union(Float64,Float32,Complex128,Complex64)
 typealias BlasReal Union(Float64,Float32)
 typealias BlasComplex Union(Complex128,Complex64)
@@ -159,40 +164,55 @@ else
     blas_int(x) = int32(x)
 end
 
+typealias TrueOrFalse Union(Type{Val{false}}, Type{Val{true}})
+
 #Check that stride of matrix/vector is 1
 function chkstride1(A::StridedVecOrMat...)
     for a in A
-        stride(a,1)== 1 || error("matrix does not have contiguous columns")
+        if stride(a, 1) != 1
+            throw(ErrorException("matrix does not have contiguous columns"))
+        end
     end
 end
 
 #Check that matrix is square
-function chksquare(A::AbstractMatrix)
-    m,n = size(A)
-    m == n || throw(DimensionMismatch("matrix is not square"))
-    m
+function chksquare(A::Union(AbstractMatrix, Factorization))
+    m, n = size(A)
+    if m != n
+        throw(DimensionMismatch("matrix is not square"))
+    end
+    return m
 end
 
 function chksquare(A...)
     sizes = Int[]
     for a in A
-        size(a,1)==size(a,2) || throw(DimensionMismatch("matrix is not square: dimensions are $(size(a))"))
-        push!(sizes, size(a,1))
+        if size(a, 1) != size(a, 2)
+            throw(DimensionMismatch("matrix is not square: dimensions are $(size(a))"))
+        end
+        push!(sizes, size(a, 1))
     end
-    length(A)==1 ? sizes[1] : sizes
+    return sizes
 end
 
 #Check that upper/lower (for special matrices) is correctly specified
-macro chkuplo()
-   :((uplo=='U' || uplo=='L') || throw(ArgumentError("""invalid uplo = $uplo
-
-Valid choices are 'U' (upper) or 'L' (lower).""")))
+@inline function chkuplo(uplo::Char)
+    if uplo != 'U' && uplo != 'L'
+        throw(ArgumentError(
+            "uplo argument must be 'U' (upper) or 'L' (lower), got $(repr(uplo))"))
+    end
+    return uplo
 end
 
-const CHARU = 'U'
-const CHARL = 'L'
-char_uplo(uplo::Symbol) = uplo == :U ? CHARU : (uplo == :L ? CHARL : throw(ArgumentError("uplo argument must be either :U or :L")))
-
+function char_uplo(uplo::Symbol)
+    if uplo == :U
+        return 'U'
+    elseif uplo == :L
+        return 'L'
+    else
+        throw(ArgumentError("uplo argument must be either :U or :L"))
+    end
+end
 
 include("linalg/exceptions.jl")
 include("linalg/generic.jl")
