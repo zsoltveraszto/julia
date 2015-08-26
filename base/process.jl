@@ -212,6 +212,7 @@ type Process <: AbstractPipe
     exitnotify::Condition
     closecb::Callback
     closenotify::Condition
+    openstream::Symbol # for open(cmd) deprecation
     function Process(cmd::Cmd, handle::Ptr{Void}, in::RawOrBoxedHandle, out::RawOrBoxedHandle, err::RawOrBoxedHandle)
         if !isa(in, AsyncStream) || in === DevNull
             in=DevNull
@@ -236,7 +237,9 @@ immutable ProcessChain <: AbstractPipe
     in::Redirectable
     out::Redirectable
     err::Redirectable
+    openstream::Symbol # for open(cmd) deprecation
     ProcessChain(stdios::StdIOSet) = new(Process[], stdios[1], stdios[2], stdios[3])
+    ProcessChain(chain::ProcessChain, openstream::Symbol) = new(chain.processes, chain.in, chain.out, chain.err, openstream) # for open(cmd) deprecation
 end
 
 function _jl_spawn(cmd, argv, loop::Ptr{Void}, pp::Process,
@@ -477,11 +480,21 @@ function open(cmds::AbstractCmd, mode::AbstractString="r", other::AsyncStream=De
         out = Pipe()
         processes = spawn(cmds, (in,out,STDERR))
         close(out.in)
+        if isa(processes,ProcessChain) # for open(cmd) deprecation
+            processes = ProcessChain(processes, :out)
+        else
+            processes.openstream = :out
+        end
     elseif mode == "w"
         in = Pipe()
         out = other
         processes = spawn(cmds, (in,out,STDERR))
         close(in.out)
+        if isa(processes,ProcessChain) # for open(cmd) deprecation
+            processes = ProcessChain(processes, :in)
+        else
+            processes.openstream = :in
+        end
     else
         throw(ArgumentError("mode must be \"r\" or \"w\", not \"$mode\""))
     end
