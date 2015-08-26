@@ -465,31 +465,38 @@ eachline(cmd::AbstractCmd) = eachline(cmd, DevNull)
 
 # return a Process object to read-to/write-from the pipeline
 function open(cmds::AbstractCmd, mode::AbstractString="r", other::AsyncStream=DevNull)
-    if mode == "r"
+    if mode == "r+" || mode == "w+"
+        other === DevNull || throw(ArgumentError("no other stream for mode rw+"))
+        in = Pipe()
+        out = Pipe()
+        processes = spawn(cmds, (in,out,STDERR))
+        close(in.out)
+        close(out.in)
+    elseif mode == "r"
         in = other
-        out = io = Pipe()
+        out = Pipe()
         processes = spawn(cmds, (in,out,STDERR))
         close(out.in)
     elseif mode == "w"
-        in = io = Pipe()
+        in = Pipe()
         out = other
         processes = spawn(cmds, (in,out,STDERR))
         close(in.out)
     else
         throw(ArgumentError("mode must be \"r\" or \"w\", not \"$mode\""))
     end
-    return (io, processes)
+    return processes
 end
 
 function open(f::Function, cmds::AbstractCmd, args...)
-    io, P = open(cmds, args...)
+    P = open(cmds, args...)
     ret = try
-        f(io)
+        f(P)
     catch
         kill(P)
         rethrow()
     finally
-        close(io)
+        close(P)
     end
     success(P) || pipeline_error(P)
     return ret
@@ -497,14 +504,13 @@ end
 
 # TODO: deprecate this
 function readandwrite(cmds::AbstractCmd)
-    in = Pipe()
-    out, processes = open(cmds, "r", in)
-    (out, in, processes)
+    processes = open(cmds, "r+")
+    (processes.out, processes.in, processes)
 end
 
 function readbytes(cmd::AbstractCmd, stdin::AsyncStream=DevNull)
-    out, procs = open(cmd, "r", stdin)
-    bytes = readbytes(out)
+    procs = open(cmd, "r", stdin)
+    bytes = readbytes(procs.out)
     !success(procs) && pipeline_error(procs)
     return bytes
 end

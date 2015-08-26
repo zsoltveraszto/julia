@@ -333,7 +333,7 @@ function create_expr_cache(input::AbstractString, output::AbstractString)
             eval(Main, deserialize(STDIN))
         end
         """
-    io, pobj = open(detach(`$(julia_cmd())
+    io = open(detach(`$(julia_cmd())
                            --output-ji $output --output-incremental=yes
                            --startup-file=no --history-file=no
                            --eval $code_object`), "w", STDOUT)
@@ -360,10 +360,10 @@ function create_expr_cache(input::AbstractString, output::AbstractString)
                       end)
         end
         close(io)
-        wait(pobj)
-        return pobj
+        wait(io)
+        return io
     catch
-        kill(pobj)
+        kill(io)
         close(io)
         rethrow()
     end
