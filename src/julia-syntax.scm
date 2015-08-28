@@ -2589,6 +2589,12 @@
 
         ((module)
 	 (cons e '()))
+	((using import importall export)
+	 (if dest
+	     (let ((ex (to-lff '(null) dest tail)))
+	       (cons (car ex)
+		     (cons e (cdr ex))))
+	     (cons e '())))
 
         ((symbolicgoto symboliclabel)
          (cons (if tail '(return (null)) '(null))
