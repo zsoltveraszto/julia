@@ -75,7 +75,7 @@ static jl_fptr_t id_to_fptrs[] = {
   jl_f_get_field, jl_f_set_field, jl_f_field_type, jl_f_nfields,
   jl_f_arrayref, jl_f_arrayset, jl_f_arraysize, jl_f_instantiate_type,
   jl_f_kwcall, jl_trampoline, jl_f_applicable, jl_f_invoke,
-  jl_apply_generic, jl_unprotect_stack, jl_f_sizeof, jl_f_new_expr,
+  jl_apply_generic, jl_f_sizeof, jl_f_new_expr,
   jl_f_intrinsic_call,
   NULL };
 

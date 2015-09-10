@@ -163,7 +163,9 @@ static void NOINLINE save_stack(jl_task_t *t)
     size_t nb = (char*)jl_stackbase - (char*)&_x;
     char *buf;
     if (t->stkbuf == NULL || t->bufsz < nb) {
-        buf = (char*)allocb(nb);
+        buf = (char*)realloc(t->stkbuf, nb);
+        if (buf == NULL)
+            jl_throw(jl_memory_exception);
         t->stkbuf = buf;
         t->bufsz = nb;
     }
@@ -205,9 +207,10 @@ static void NORETURN finish_task(jl_task_t *t, jl_value_t *resultval)
         t->state = done_sym;
     t->result = resultval;
     jl_gc_wb(t, t->result);
-    // TODO: early free of t->stkbuf
 #ifdef COPY_STACKS
+    void *stkbuf = t->stkbuf;
     t->stkbuf = (void*)(intptr_t)-1;
+    free(stkbuf);
 #endif
     if (ti_tid != 0) {
         // For now, only thread 0 runs the task scheduler.
@@ -462,14 +465,15 @@ static void rebase_state(jl_jmp_buf *ctx, intptr_t local_sp, intptr_t new_sp)
 #error "COPY_STACKS must be defined on this platform."
 #endif
 }
-static void init_task(jl_task_t *t, char* stack)
+static void init_task(jl_task_t *t)
 {
     if (jl_setjmp(t->ctx, 0)) {
         start_task();
     }
     // this runs when the task is created
     ptrint_t local_sp = (ptrint_t)&t;
-    ptrint_t new_sp = (ptrint_t)stack + t->ssize - _frame_offset;
+    char *stk = (char*)LLT_ALIGN((uptrint_t)t->stkbuf, jl_page_size) + jl_page_size;
+    ptrint_t new_sp = (ptrint_t)stk + t->ssize - _frame_offset;
 #ifdef _P64
     // SP must be 16-byte aligned
     new_sp = new_sp&-16;
@@ -837,6 +841,8 @@ DLLEXPORT void jl_rethrow_other(jl_value_t *e)
     throw_internal(e);
 }
 
+jl_value_t *jl_unprotect_stack_func;
+
 DLLEXPORT jl_task_t *jl_new_task(jl_function_t *start, size_t ssize)
 {
     size_t pagesz = jl_page_size;
@@ -867,43 +873,41 @@ DLLEXPORT jl_task_t *jl_new_task(jl_function_t *start, size_t ssize)
 #ifdef COPY_STACKS
     t->bufsz = 0;
 #else
-    JL_GC_PUSH1(&t);
-
-    char *stk = allocb(ssize+pagesz+(pagesz-1));
+    t->bufsz = ssize + pagesz + (pagesz - 1);
+    char *stk = malloc(t->bufsz);
+    if (stk == NULL)
+        jl_throw(jl_memory_exception);
     t->stkbuf = stk;
-    jl_gc_wb_buf(t, t->stkbuf);
     stk = (char*)LLT_ALIGN((uptrint_t)stk, pagesz);
     // add a guard page to detect stack overflow
-    if (mprotect(stk, pagesz-1, PROT_NONE) == -1)
+    if (mprotect(stk, pagesz - 1, PROT_NONE) == -1)
         jl_errorf("mprotect: %s", strerror(errno));
-    stk += pagesz;
 
-    init_task(t, stk);
-    JL_GC_POP();
-    jl_gc_add_finalizer((jl_value_t*)t, jl_unprotect_stack_func);
+    init_task(t);
 #endif
 
+    jl_gc_add_finalizer((jl_value_t*)t, (jl_function_t*)jl_unprotect_stack_func);
     return t;
 }
 
-JL_CALLABLE(jl_unprotect_stack)
+static void jl_unprotect_stack(jl_task_t *t)
 {
+    void *stk = t->stkbuf;
+    if (stk && stk != (void*)(intptr_t)-1) {
+        t->stkbuf = NULL;
 #ifndef COPY_STACKS
-    jl_task_t *t = (jl_task_t*)args[0];
-    size_t pagesz = jl_page_size;
-    char *stk = (char*)LLT_ALIGN((uptrint_t)t->stkbuf, pagesz);
-    // unprotect stack so it can be reallocated for something else
-    mprotect(stk, pagesz - 1, PROT_READ|PROT_WRITE);
+        stk = (void*)LLT_ALIGN((uptrint_t)stk, jl_page_size);
+        // unprotect stack so it can be reallocated for something else
+        mprotect(stk, jl_page_size - 1, PROT_READ|PROT_WRITE);
 #endif
-    return jl_nothing;
+        free(stk);
+    }
 }
 
 DLLEXPORT jl_value_t *jl_get_current_task(void)
 {
     return (jl_value_t*)jl_current_task;
 }
-
-jl_function_t *jl_unprotect_stack_func;
 
 // Do one-time initializations for task system
 void jl_init_tasks(void)
@@ -935,7 +939,7 @@ void jl_init_tasks(void)
     failed_sym = jl_symbol("failed");
     runnable_sym = jl_symbol("runnable");
 
-    jl_unprotect_stack_func = jl_new_closure(jl_unprotect_stack, (jl_value_t*)jl_emptysvec, NULL);
+    jl_unprotect_stack_func = jl_box_voidpointer(&jl_unprotect_stack);
 }
 
 // Initialize a root task using the given stack.
@@ -944,13 +948,14 @@ void jl_init_root_task(void *stack, size_t ssize)
     jl_current_task = (jl_task_t*)jl_gc_allocobj(sizeof(jl_task_t));
     jl_set_typeof(jl_current_task, jl_task_type);
 #ifdef COPY_STACKS
-    jl_current_task->ssize = 0;  // size of saved piece
-    jl_current_task->bufsz = 0;
-    jl_current_task->stkbuf = NULL;
+    jl_current_task->stkbuf = NULL; // address of stack save location
+    jl_current_task->ssize = 0; // size of saved piece
+    jl_current_task->bufsz = 0; // sizeof stkbuf allocation
 #else
     // TODO update for threads
-    jl_current_task->ssize = ssize;
-    jl_current_task->stkbuf = stack;
+    jl_current_task->stkbuf = stack; // address of bottom of stack (estimated)
+    jl_current_task->ssize = ssize; // sizeof stack
+    jl_current_task->bufsz = ssize + jl_page_size; // sizeof stkbuf allocation (estimated)
 #endif
     jl_current_task->parent = jl_current_task;
     jl_current_task->current_module = jl_current_module;

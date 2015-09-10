@@ -1590,19 +1590,11 @@ NOINLINE static int gc_mark_module(jl_module_t *m, int d)
 
 static void gc_mark_task_stack(jl_task_t *ta, int d)
 {
-    int stkbuf = (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL);
     // FIXME - we need to mark stacks on other threads
-    int curtask = (ta == *jl_all_task_states[0].pcurrent_task);
-    if (stkbuf) {
-#ifndef COPY_STACKS
-        if (ta != jl_root_task) // stkbuf isn't owned by julia for the root task
-#endif
-        gc_setmark_buf(ta->stkbuf, gc_bits(jl_astaggedvalue(ta)));
-    }
-    if (curtask) {
+    if (ta == *jl_all_task_states[0].pcurrent_task) {
         gc_mark_stack((jl_value_t*)ta, *jl_all_pgcstacks[0], 0, d);
     }
-    else if (stkbuf) {
+    else if (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL) {
         ptrint_t offset;
 #ifdef COPY_STACKS
         offset = (char *)ta->stkbuf - ((char *)jl_stackbase - ta->ssize);
@@ -1846,6 +1838,7 @@ double clock_now(void);
 
 extern jl_module_t *jl_old_base_module;
 extern jl_array_t *jl_module_init_order;
+extern jl_value_t *jl_unprotect_stack_func;
 
 static int inc_count = 0;
 static int quick_count = 0;

@@ -86,9 +86,7 @@
 
 // select an implementation of stack switching.
 // currently only COPY_STACKS is recommended.
-#ifndef COPY_STACKS
 #define COPY_STACKS
-#endif
 
 // threading options ----------------------------------------------------------
 
