@@ -1594,15 +1594,15 @@ static void gc_mark_task_stack(jl_task_t *ta, int d)
     if (ta == *jl_all_task_states[0].pcurrent_task) {
         gc_mark_stack((jl_value_t*)ta, *jl_all_pgcstacks[0], 0, d);
     }
-    else if (ta->stkbuf != (void*)(intptr_t)-1 && ta->stkbuf != NULL) {
-        ptrint_t offset;
+    else if (!ta->copy_stack) {
+        gc_mark_stack((jl_value_t*)ta, ta->gcstack, 0, d);
+    }
 #ifdef COPY_STACKS
-        offset = (char *)ta->stkbuf - ((char *)jl_stackbase - ta->ssize);
-#else
-        offset = 0;
-#endif
+    else if (ta->stkbuf != NULL && ta->stkbuf != (void*)(intptr_t)-1) {
+        ptrint_t offset = (char *)ta->stkbuf + ta->ssize - (char *)jl_stackbase;
         gc_mark_stack((jl_value_t*)ta, ta->gcstack, offset, d);
     }
+#endif
 }
 
 NOINLINE static void gc_mark_task(jl_task_t *ta, int d)
@@ -1838,7 +1838,7 @@ double clock_now(void);
 
 extern jl_module_t *jl_old_base_module;
 extern jl_array_t *jl_module_init_order;
-extern jl_value_t *jl_unprotect_stack_func;
+extern jl_value_t *jl_task_cleanup_func;
 
 static int inc_count = 0;
 static int quick_count = 0;
@@ -1881,7 +1881,7 @@ static void pre_mark(void)
     }
 
     jl_mark_box_caches();
-    gc_push_root(jl_unprotect_stack_func, 0);
+    gc_push_root(jl_task_cleanup_func, 0);
     gc_push_root(jl_bottom_func, 0);
     gc_push_root(jl_typetype_type, 0);
 
