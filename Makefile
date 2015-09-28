@@ -443,9 +443,6 @@ endif
 ifeq ($(OS), Linux)
 	-$(JULIAHOME)/contrib/fixup-libstdc++.sh $(DESTDIR)$(private_libdir)
 endif
-	# If building against newer LLVM versions, it will be necessary to bundle libedit.so.0
-ifeq ($(LLVM_VER),svn)
-
 	# Copy in juliarc.jl files per-platform for binary distributions as well
 	# Note that we don't install to sysconfdir: we always install to $(DESTDIR)$(prefix)/etc.
 	# If you want to make a distribution with a hardcoded path, you take care of installation
