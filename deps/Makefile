@@ -187,6 +187,12 @@ STAGE2_DEPS += lapack
 endif
 endif
 
+# If we are using LLVM_VER=svn, we need to build libedit;
+ifeq ($(LLVM_VER),svn)
+STAGE2_DEPS += libedit
+compile-llvm: install-libedit
+endif
+
 #Platform specific flags
 
 ifeq ($(OS), WINNT)
@@ -206,7 +212,7 @@ install: $(addprefix install-, $(DEP_LIBS))
 cleanall: $(addprefix clean-, $(DEP_LIBS))
 distcleanall: $(addprefix distclean-, $(DEP_LIBS))
 	rm -rf $(build_prefix)
-getall: get-llvm get-libuv get-pcre get-openlibm get-openspecfun get-dsfmt get-Rmath-julia get-openblas get-lapack get-fftw get-suitesparse get-arpack get-unwind get-osxunwind get-gmp get-mpfr get-patchelf get-utf8proc get-virtualenv get-objconv get-libgit2
+getall: get-llvm get-libuv get-pcre get-openlibm get-openspecfun get-dsfmt get-Rmath-julia get-openblas get-lapack get-fftw get-suitesparse get-arpack get-unwind get-osxunwind get-gmp get-mpfr get-patchelf get-utf8proc get-virtualenv get-objconv get-libgit2 get-libedit
 
 ## PATHS ##
 # sort is used to remove potential duplicates
@@ -2060,6 +2066,49 @@ configure-libgit2: $(BUILDDIR)/$(LIBGIT2_SRC_DIR)/Makefile
 compile-libgit2: $(LIBGIT2_OBJ_SOURCE)
 check-libgit2: $(BUILDDIR)/$(LIBGIT2_SRC_DIR)/checked
 install-libgit2: $(LIBGIT2_OBJ_TARGET)
+
+
+
+## Libedit
+# only used for when LLVM needs it; at the time of writing, that is when LLVM_VER == svn
+
+LIBEDIT_SOURCE := $(BUILDDIR)/libedit-$(LIBEDIT_VER)/src/.libs/libedit.$(SHLIB_EXT)
+LIBEDIT_TARGET := $(build_libexecdir)/libedit.$(SHLIB_EXT)
+
+$(SRCDIR)/srccache/libedit-$(LIBEDIT_VER).tar.gz: | $(SRCDIR)/srccache
+	$(JLDOWNLOAD) $@ http://thrysoee.dk/editline/libedit-$(LIBEDIT_VER).tar.gz
+$(BUILDDIR)/libedit-$(LIBEDIT_VER)/configure: $(SRCDIR)/srccache/libedit-$(LIBEDIT_VER).tar.gz
+	$(JLCHECKSUM) $<
+	cd $(BUILDDIR) && $(TAR) zxf $<
+	touch -c $@
+$(BUILDDIR)/libedit-$(LIBEDIT_VER)/config.status: $(BUILDDIR)/libedit-$(LIBEDIT_VER)/configure
+	cd $(dir $@) && \
+	./configure $(CONFIGURE_COMMON) --bindir="$(build_libexecdir)"
+	touch -c $@
+$(LIBEDIT_SOURCE): $(BUILDDIR)/libedit-$(LIBEDIT_VER)/config.status
+	$(MAKE) -C $(dir $<)
+	touch -c $@
+$(BUILDDIR)/libedit-$(LIBEDIT_VER)/checked: $(LIBEDIT_SOURCE)
+	echo 1 > $@
+$(LIBEDIT_TARGET): $(LIBEDIT_SOURCE) $(BUILDDIR)/libedit-$(LIBEDIT_VER)/checked
+	$(call make-install,libedit-$(LIBEDIT_VER),NO_INSTALL_HARDLINKS=1 bindir="$(build_libexecdir)")
+	touch -c $@
+
+clean-libedit:
+	-$(MAKE) -C $(BUILDDIR)/libedit-$(LIBEDIT_VER) clean
+	-rm -f $(LIBEDIT_OBJ_TARGET)
+distclean-libedit:
+	-rm -rf $(SRCDIR)/srccache/libedit-$(LIBEDIT_VER).tar.gz \
+		$(BUILDDIR)/libedit-$(LIBEDIT_VER)
+
+get-libedit: $(SRCDIR)/srccache/libedit-$(LIBEDIT_VER).tar.gz
+configure-libedit: $(BUILDDIR)/libedit-$(LIBEDIT_VER)/config.status
+compile-libedit: $(LIBEDIT_SOURCE)
+check-libedit: $(BUILDDIR)/libedit-$(LIBEDIT_VER)/checked
+install-libedit: $(LIBEDIT_TARGET)
+
+
+
 
 ## phony targets ##
 
