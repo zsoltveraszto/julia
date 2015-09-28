@@ -189,7 +189,6 @@ endif
 
 # If we are using LLVM_VER=svn, we need to build libedit;
 ifeq ($(LLVM_VER),svn)
-STAGE2_DEPS += libedit
 compile-llvm: install-libedit
 endif
 
