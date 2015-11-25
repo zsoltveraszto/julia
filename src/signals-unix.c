@@ -105,6 +105,10 @@ static void segv_handler(int sig, siginfo_t *info, void *context)
         jl_unblock_signal(sig);
         jl_throw(jl_readonlymemory_exception);
     }
+    else if (!info->si_addr) {
+        jl_unblock_signal(sig);
+        jl_throw(jl_undefref_exception);
+    }
     else {
 #ifdef SEGV_EXCEPTION
         jl_unblock_signal(sig);

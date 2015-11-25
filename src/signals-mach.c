@@ -194,6 +194,10 @@ kern_return_t catch_exception_raise(mach_port_t            exception_port,
         return KERN_SUCCESS;
     }
 #endif
+    if (!fault_addr) {
+        jl_throw_in_thread(tid, thread, jl_undefref_exception);
+        return KERN_SUCCESS;
+    }
 #ifdef SEGV_EXCEPTION
     if (1) {
 #else
