@@ -546,6 +546,7 @@ function open(cmds::AbstractCmd, mode::AbstractString="r", other::Redirectable=D
         in = other
         out = io = Pipe()
         processes = spawn(cmds, (in,out,STDERR))
+        start_reading(io)
         close(out.in)
     elseif mode == "w"
         in = io = Pipe()

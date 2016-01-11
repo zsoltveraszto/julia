@@ -91,8 +91,6 @@ function eof(s::LibuvStream)
     !isopen(s) && nb_available(s)<=0
 end
 
-const DEFAULT_READ_BUFFER_SZ = 10485760           # 10 MB
-
 const StatusUninit      = 0 # handle is allocated, but not initialized
 const StatusInit        = 1 # handle is valid, but not connected/active
 const StatusConnecting  = 2 # handle is in process of connecting
@@ -148,7 +146,6 @@ type PipeEndpoint <: LibuvStream
     closenotify::Condition
     sendbuf::Nullable{IOBuffer}
     lock::ReentrantLock
-    throttle::Int
 
     PipeEndpoint(handle::Ptr{Void} = C_NULL) = new(
         handle,
@@ -158,8 +155,7 @@ type PipeEndpoint <: LibuvStream
         false,Condition(),
         false,Condition(),
         false,Condition(),
-        nothing, ReentrantLock(),
-        DEFAULT_READ_BUFFER_SZ)
+        nothing, ReentrantLock())
 end
 
 type PipeServer <: LibuvServer
@@ -202,7 +198,6 @@ type TTY <: LibuvStream
     closenotify::Condition
     sendbuf::Nullable{IOBuffer}
     lock::ReentrantLock
-    throttle::Int
     @windows_only ispty::Bool
     function TTY(handle)
         tty = new(
@@ -212,8 +207,7 @@ type TTY <: LibuvStream
             PipeBuffer(),
             false,Condition(),
             false,Condition(),
-            nothing, ReentrantLock(),
-            DEFAULT_READ_BUFFER_SZ)
+            nothing, ReentrantLock())
         @windows_only tty.ispty = ccall(:jl_ispty, Cint, (Ptr{Void},), handle)!=0
         tty
     end
@@ -289,6 +283,15 @@ function init_stdio(handle::Ptr{Void})
     end
 end
 
+function stream_wait(x,c...)
+    preserve_handle(x)
+    try
+        return wait(c...)
+    finally
+        unpreserve_handle(x)
+    end
+end
+
 function reinit_stdio()
     global uv_jl_asynccb       = cfunction(uv_asynccb, Void, (Ptr{Void},))
     global uv_jl_timercb       = cfunction(uv_timercb, Void, (Ptr{Void},))
@@ -324,51 +327,27 @@ end
 function wait_connected(x::Union{LibuvStream, LibuvServer})
     check_open(x)
     while x.status == StatusConnecting
-        stream_wait(x, x.connectnotify)
+        stream_wait(x,x.connectnotify)
         check_open(x)
     end
 end
 
+
 function wait_readbyte(x::LibuvStream, c::UInt8)
-    preserve_handle(x)
-    try
-        while isopen(x) && search(x.buffer, c) <= 0
-            start_reading(x) # ensure we are reading
-            wait(x.readnotify)
-        end
-    finally
-        if isempty(x.readnotify.waitq)
-            stop_reading(x) # stop reading iff there are currently no other read clients of the stream
-        end
-        unpreserve_handle(x)
+    while isopen(x) && search(x.buffer,c) <= 0
+        start_reading(x)
+        stream_wait(x,x.readnotify)
     end
 end
 
 function wait_readnb(x::LibuvStream, nb::Int)
-    oldthrottle = x.throttle
-    preserve_handle(x)
-    try
-        while isopen(x) && nb_available(x.buffer) < nb
-            x.throttle = max(nb, x.throttle)
-            start_reading(x) # ensure we are reading
-            wait(x.readnotify)
-        end
-    finally
-        if oldthrottle <= x.throttle <= nb
-            x.throttle = oldthrottle
-        end
-        if isempty(x.readnotify.waitq)
-            stop_reading(x) # stop reading iff there are currently no other read clients of the stream
-        end
-        unpreserve_handle(x)
+    while isopen(x) && nb_available(x.buffer) < nb
+        start_reading(x)
+        stream_wait(x,x.readnotify)
     end
 end
 
-function wait_close(x::Union{LibuvStream, LibuvServer})
-    if isopen(x)
-        stream_wait(x, x.closenotify)
-    end
-end
+wait_close(x) = if isopen(x) stream_wait(x,x.closenotify); end
 
 function close(stream::Union{LibuvStream, LibuvServer})
     if isopen(stream) && stream.status != StatusClosing
@@ -503,6 +482,7 @@ function notify_filled(stream::LibuvStream, nread::Int)
     end
 end
 
+const READ_BUFFER_SZ=10485760           # 10 MB
 function uv_readcb(handle::Ptr{Void}, nread::Cssize_t, buf::Ptr{Void})
     stream = @handle_as handle LibuvStream
     nread = Int(nread)
@@ -533,11 +513,11 @@ function uv_readcb(handle::Ptr{Void}, nread::Cssize_t, buf::Ptr{Void})
         notify(stream.readnotify)
     end
 
-    # Stop background reading when
-    # 1) we have accumulated a lot of unread data OR
+    # Stop reading when
+    # 1) when we have an infinite buffer, and we have accumulated a lot of unread data OR
     # 2) we have an alternate buffer that has reached its limit.
-    if (nb_available(stream.buffer) >= stream.throttle) ||
-       (nb_available(stream.buffer) >= stream.buffer.maxsize)
+    if (is_maxsize_unlimited(stream.buffer) && (nb_available(stream.buffer) > READ_BUFFER_SZ )) ||
+       (nb_available(stream.buffer) == stream.buffer.maxsize)
         stop_reading(stream)
     end
     nothing
@@ -855,7 +835,7 @@ function start_reading(stream::LibuvStream, cb::Function)
     if nread > 0
         notify_filled(stream, nread)
     end
-    return failure_code
+    nothing
 end
 
 function start_reading(stream::LibuvStream, cb::Bool)
@@ -892,22 +872,16 @@ function read!(s::LibuvStream, a::Array{UInt8, 1})
     end
 
     if nb <= SZ_UNBUFFERED_IO # Under this limit we are OK with copying the array from the stream's buffer
-        wait_readnb(s, nb)
+        wait_readnb(s,nb)
         read!(sbuf, a)
     else
-        try
-            stop_reading(s) # Just playing it safe, since we are going to switch buffers.
-            newbuf = PipeBuffer(a, #=maxsize=# nb)
-            newbuf.size = 0 # reset the write pointer to the beginning
-            s.buffer = newbuf
-            write(newbuf, sbuf)
-            wait_readnb(s, nb)
-        finally
-            s.buffer = sbuf
-            if !isempty(s.readnotify.waitq)
-                start_reading(x) # resume reading iff there are currently other read clients of the stream
-            end
-        end
+        stop_reading(s) # Just playing it safe, since we are going to switch buffers.
+        newbuf = PipeBuffer(a, nb)
+        newbuf.size = 0
+        s.buffer = newbuf
+        write(newbuf, sbuf)
+        wait_readnb(s,nb)
+        s.buffer = sbuf
     end
     return a
 end
@@ -916,7 +890,8 @@ function read(this::LibuvStream, ::Type{UInt8})
     wait_readnb(this, 1)
     buf = this.buffer
     @assert buf.seekable == false
-    read(buf, UInt8)
+    wait_readnb(this,1)
+    read(buf,UInt8)
 end
 
 function readavailable(this::LibuvStream)
@@ -964,11 +939,11 @@ function buffer_or_write(s::LibuvStream, p::Ptr, n::Integer)
 
     buf = get(s.sendbuf)
     totb = nb_available(buf) + n
-    if totb < buf.maxsize
+    if totb < maxsize(buf)
         nb = write(buf, p, n)
     else
         flush(s)
-        if n > buf.maxsize
+        if n > maxsize(buf)
             nb = uv_write(s, p, n)
         else
             nb = write(buf, p, n)
@@ -1187,9 +1162,18 @@ function wait_readnb(s::BufferStream, nb::Int)
     while isopen(s) && nb_available(s.buffer) < nb
         wait(s.r_c)
     end
+
+    (nb_available(s.buffer) < nb) && error("closed BufferStream")
+end
+
+function eof(s::BufferStream)
+    wait_readnb(s,1)
+    !isopen(s) && nb_available(s.buffer)<=0
 end
 
 show(io::IO, s::BufferStream) = print(io,"BufferStream() bytes waiting:",nb_available(s.buffer),", isopen:", s.is_open)
+
+nb_available(s::BufferStream) = nb_available(s.buffer)
 
 function wait_readbyte(s::BufferStream, c::UInt8)
     while isopen(s) && search(s.buffer,c) <= 0

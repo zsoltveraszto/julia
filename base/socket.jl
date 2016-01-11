@@ -255,7 +255,6 @@ type TCPSocket <: LibuvStream
     closenotify::Condition
     sendbuf::Nullable{IOBuffer}
     lock::ReentrantLock
-    throttle::Int
 
     TCPSocket(handle) = new(
         handle,
@@ -266,8 +265,7 @@ type TCPSocket <: LibuvStream
         false, Condition(),
         false, Condition(),
         nothing,
-        ReentrantLock(),
-        DEFAULT_READ_BUFFER_SZ
+        ReentrantLock()
     )
 end
 function TCPSocket()
