@@ -128,7 +128,7 @@ JL_DLLEXPORT void JL_NORETURN jl_bounds_error(jl_value_t *v, jl_value_t *t)
     jl_throw(jl_new_struct((jl_datatype_t*)jl_boundserror_type, v, t));
 }
 
-JL_DLLEXPORT void JL_NORETURN jl_bounds_error_v(jl_value_t *v, jl_value_t **idxs, size_t nidxs)
+JL_DLLEXPORT void JL_NORETURN jl_bounds_error_v(jl_value_t *v, jl_value_t *const *idxs, size_t nidxs)
 {
     jl_value_t *t = NULL;
     // items in idxs are assumed to already be rooted
@@ -137,7 +137,7 @@ JL_DLLEXPORT void JL_NORETURN jl_bounds_error_v(jl_value_t *v, jl_value_t **idxs
     jl_throw(jl_new_struct((jl_datatype_t*)jl_boundserror_type, v, t));
 }
 
-JL_DLLEXPORT void JL_NORETURN jl_bounds_error_tuple_int(jl_value_t **v, size_t nv, size_t i)
+JL_DLLEXPORT void JL_NORETURN jl_bounds_error_tuple_int(jl_value_t *const *v, size_t nv, size_t i)
 {
     // values in v are expected to already be gc-rooted
     jl_bounds_error_int(jl_f_tuple(NULL, v, nv), i);
@@ -396,7 +396,42 @@ JL_CALLABLE(jl_f_typeassert)
     return args[0];
 }
 
-static jl_function_t *jl_append_any_func;
+static NOINLINE jl_array_t *jl_call_append_any_func(jl_value_t *const *args, uint32_t nargs, size_t i)
+{
+    // Do not inline to make sure the stack frame (JL_GC_PUSHARGS) is popped
+    assert(nargs > 1);
+    static jl_function_t *append_any_func = NULL;
+    if (append_any_func == NULL) {
+        append_any_func = (jl_function_t*)jl_get_global(jl_base_module,
+                                                        jl_symbol("append_any"));
+        if (append_any_func == NULL) {
+            // error if append_any not available
+            JL_TYPECHK(apply, tuple, jl_typeof(args[i]));
+        }
+    }
+    // Make a copy of args so that we don't need to modify the original version
+    int onstack = (nargs < jl_page_size / sizeof(jl_value_t*));
+    jl_value_t **newargs;
+    jl_value_t **gcframe;
+    JL_GC_PUSHARGS(gcframe, onstack ? nargs : 1);
+    newargs = gcframe;
+    if (!onstack) {
+        // put arguments on the heap if there are too many
+        jl_svec_t *arg_heap = jl_alloc_svec(nargs);
+        newargs[0] = (jl_value_t*)arg_heap;
+        newargs = jl_svec_data(arg_heap);
+    }
+    // No write barrier needed.
+    memcpy(newargs + 1, args + 1, (nargs - 1) * sizeof(void*));
+    newargs[0] = append_any_func;
+    gcframe[0] = jl_apply(newargs, nargs);
+    jl_array_t *argarr = (jl_array_t*)gcframe[0];
+    assert(jl_typeis(argarr, jl_array_any_type));
+    jl_array_grow_beg(argarr, 1);
+    jl_cellset(argarr, 0, args[0]);
+    JL_GC_POP();
+    return argarr;
+}
 
 JL_CALLABLE(jl_f__apply)
 {
@@ -430,22 +465,8 @@ JL_CALLABLE(jl_f__apply)
             n += jl_array_len(args[i]);
         }
         else {
-            if (jl_append_any_func == NULL) {
-                jl_append_any_func =
-                    (jl_function_t*)jl_get_global(jl_base_module, jl_symbol("append_any"));
-                if (jl_append_any_func == NULL) {
-                    // error if append_any not available
-                    JL_TYPECHK(apply, tuple, jl_typeof(args[i]));
-                }
-            }
-            jl_array_t *argarr = NULL;
-            JL_GC_PUSH2(&argarr, &f);
-            args[0] = jl_append_any_func;
-            argarr = (jl_array_t*)jl_apply(args, nargs);
-            assert(jl_typeis(argarr, jl_array_any_type));
-            jl_array_grow_beg(argarr, 1);
-            jl_cellset(argarr, 0, f);
-            args[0] = f;
+            jl_array_t *argarr = jl_call_append_any_func(args, nargs, i);
+            JL_GC_PUSH1(&argarr);
             jl_value_t *result = jl_apply(jl_cell_data(argarr), jl_array_len(argarr));
             JL_GC_POP();
             return result;
@@ -960,7 +981,6 @@ JL_CALLABLE(jl_f_invoke)
 {
     JL_NARGSV(invoke, 2);
     jl_value_t *argtypes = args[1];
-    JL_GC_PUSH1(&argtypes);
     if (jl_is_tuple(args[1])) {
         // TODO: maybe deprecation warning, better checking
         argtypes = (jl_value_t*)jl_apply_tuple_type_v((jl_value_t**)jl_data_ptr(argtypes),
@@ -969,10 +989,23 @@ JL_CALLABLE(jl_f_invoke)
     else {
         jl_check_type_tuple(args[1], jl_gf_name(args[0]), "invoke");
     }
+    int onstack = (nargs < jl_page_size / sizeof(jl_value_t*));
+    jl_value_t **newargs;
+    JL_GC_PUSHARGS(newargs, onstack ? nargs : 2);
+    newargs[0] = argtypes;
+    newargs++;
     if (!jl_tuple_subtype(&args[2], nargs-2, (jl_datatype_t*)argtypes, 1))
         jl_error("invoke: argument type error");
-    args[1] = args[0];  // move function directly in front of arguments
-    jl_value_t *res = jl_gf_invoke((jl_tupletype_t*)argtypes, &args[1], nargs-1);
+    if (!onstack) {
+        // put arguments on the heap if there are too many
+        jl_svec_t *arg_heap = jl_alloc_svec(nargs - 1);
+        newargs[0] = (jl_value_t*)arg_heap;
+        newargs = jl_svec_data(arg_heap);
+    }
+    // No write barrier needed.
+    memcpy(newargs + 1, args + 2, (nargs - 2) * sizeof(void*));
+    newargs[0] = args[0];
+    jl_value_t *res = jl_gf_invoke((jl_tupletype_t*)argtypes, newargs, nargs - 1);
     JL_GC_POP();
     return res;
 }

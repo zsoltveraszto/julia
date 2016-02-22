@@ -24,7 +24,7 @@
 extern "C" {
 #endif
 
-static int cache_match_by_type(jl_value_t **types, size_t n, jl_tupletype_t *sig, int va)
+static int cache_match_by_type(jl_value_t *const *types, size_t n, jl_tupletype_t *sig, int va)
 {
     if (!va && n > jl_datatype_nfields(sig))
         return 0;
@@ -68,8 +68,8 @@ static int cache_match_by_type(jl_value_t **types, size_t n, jl_tupletype_t *sig
     return 1;
 }
 
-static inline int cache_match(jl_value_t **args, size_t n, jl_value_t **sig,
-                              int va, size_t lensig)
+static inline int cache_match(jl_value_t *const *args, size_t n,
+                              jl_value_t *const *sig, int va, size_t lensig)
 {
     // NOTE: This function is a huge performance hot spot!!
     for(size_t i=0; i < n; i++) {
@@ -214,7 +214,7 @@ static jl_lambda_info_t *jl_method_table_assoc_exact_by_type(jl_methtable_t *mt,
     return NULL;
 }
 
-static jl_lambda_info_t *jl_method_table_assoc_exact(jl_methtable_t *mt, jl_value_t **args, size_t n)
+static jl_lambda_info_t *jl_method_table_assoc_exact(jl_methtable_t *mt, jl_value_t *const *args, size_t n)
 {
     // NOTE: This function is a huge performance hot spot!!
     int8_t offs = (mt == jl_type_type->name->mt) ? 0 : 1;
@@ -886,7 +886,7 @@ static jl_value_t *lookup_match(jl_value_t *a, jl_value_t *b, jl_svec_t **penv,
 
 // invoke (compiling if necessary) the jlcall function pointer for an unspecialized method
 static jl_value_t *jl_call_unspecialized(jl_svec_t *sparam_vals, jl_lambda_info_t *meth,
-                                         jl_value_t **args, uint32_t nargs)
+                                         jl_value_t *const *args, uint32_t nargs)
 {
     if (__unlikely(meth->fptr == NULL)) {
         jl_compile_linfo(meth, NULL);
@@ -1377,7 +1377,7 @@ void JL_NORETURN jl_no_method_error_bare(jl_function_t *f, jl_value_t *args)
     // not reached
 }
 
-void JL_NORETURN jl_no_method_error(jl_function_t *f, jl_value_t **args, size_t na)
+void JL_NORETURN jl_no_method_error(jl_function_t *f, jl_value_t *const *args, size_t na)
 {
     jl_value_t *argtup = jl_f_tuple(NULL, args+1, na-1);
     JL_GC_PUSH1(&argtup);
@@ -1385,7 +1385,7 @@ void JL_NORETURN jl_no_method_error(jl_function_t *f, jl_value_t **args, size_t 
     // not reached
 }
 
-jl_tupletype_t *arg_type_tuple(jl_value_t **args, size_t nargs)
+jl_tupletype_t *arg_type_tuple(jl_value_t *const *args, size_t nargs)
 {
     jl_tupletype_t *tt;
     size_t i;
@@ -1434,7 +1434,7 @@ JL_DLLEXPORT int jl_method_exists(jl_methtable_t *mt, jl_tupletype_t *types)
     return jl_method_lookup_by_type(mt, types, 0, 0) != NULL;
 }
 
-jl_lambda_info_t *jl_method_lookup(jl_methtable_t *mt, jl_value_t **args, size_t nargs, int cache)
+jl_lambda_info_t *jl_method_lookup(jl_methtable_t *mt, jl_value_t *const *args, size_t nargs, int cache)
 {
     jl_lambda_info_t *sf = jl_method_table_assoc_exact(mt, args, nargs);
     if (sf == NULL) {
@@ -1842,7 +1842,7 @@ static jl_value_t *verify_type(jl_value_t *v)
     return v;
 }
 
-JL_DLLEXPORT jl_value_t *jl_apply_generic(jl_value_t **args, uint32_t nargs)
+JL_DLLEXPORT jl_value_t *jl_apply_generic(jl_value_t *const *args, uint32_t nargs)
 {
     jl_value_t *F = args[0];
     jl_methtable_t *mt = jl_gf_mtable(F);
@@ -1937,7 +1937,7 @@ JL_DLLEXPORT jl_value_t *jl_gf_invoke_lookup(jl_datatype_t *types)
 // every definition has its own private method table for this purpose.
 //
 // NOTE: assumes argument type is a subtype of the lookup type.
-jl_value_t *jl_gf_invoke(jl_tupletype_t *types0, jl_value_t **args, size_t nargs)
+jl_value_t *jl_gf_invoke(jl_tupletype_t *types0, jl_value_t *const *args, size_t nargs)
 {
     jl_svec_t *tpenv=jl_emptysvec;
     jl_tupletype_t *newsig=NULL;
