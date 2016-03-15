@@ -101,6 +101,21 @@ function _ftl{N}(out, val, ::Type{Val{N}})
     _ftl((out..., val), val, Val{N})
 end
 
+# constructing from an iterator
+
+(::Type{T}){T<:Tuple}(x::Tuple) = convert(T, x)  # still use `convert` for tuples
+
+(::Type{T}){T<:Tuple}(itr) = _t(T, itr, start(itr))
+
+_t(::Type{Tuple{}}, itr, s) = () # done(itr,s) ? () : error("too many values")
+
+function _t(T, itr, s)
+    @_inline_meta
+    done(itr, s) && error("too few values")
+    v, s = next(itr, s)
+    (convert(tuple_type_head(T), v), _t(tuple_type_tail(T), itr, s)...)
+end
+
 ## comparison ##
 
 function isequal(t1::Tuple, t2::Tuple)
