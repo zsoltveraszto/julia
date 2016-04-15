@@ -1609,6 +1609,16 @@
        (error (string "invalid assignment location \"" (deparse lhs) "\"")))
       (else
        (case (car lhs)
+         ((globalref)
+          ;; M.b =
+          (let* ((a   (cadr lhs))
+                 (b   (caddr lhs))
+                 (rhs (caddr e))
+                 (rr  (if (or (symbol-like? rhs) (atom? rhs)) rhs (make-ssavalue))))
+            `(block
+              ,.(if (eq? rr rhs) '() `((= ,rr ,(expand-forms rhs))))
+              (call (core setfield!) ,a (quote ,b) ,rr)
+              (unnecessary ,rr))))
          ((|.|)
           ;; a.b =
           (let* ((a   (cadr lhs))

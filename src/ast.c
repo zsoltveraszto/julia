@@ -172,14 +172,14 @@ value_t fl_invoke_julia_macro(fl_context_t *fl_ctx, value_t *args, uint32_t narg
     fl_gc_handle(fl_ctx, &scm);
     value_t scmresult;
     jl_module_t *defmod = mfunc->def->module;
-    if (defmod == NULL || defmod == jl_current_module) {
-        scmresult = fl_cons(fl_ctx, scm, fl_ctx->F);
-    }
-    else {
-        value_t opaque = cvalue(fl_ctx, jl_ast_ctx(fl_ctx)->jvtype, sizeof(void*));
-        *(jl_value_t**)cv_data((cvalue_t*)ptr(opaque)) = (jl_value_t*)defmod;
-        scmresult = fl_cons(fl_ctx, scm, opaque);
-    }
+    /* if (defmod == NULL || defmod == jl_current_module) { */
+    /*     scmresult = fl_cons(fl_ctx, scm, fl_ctx->F); */
+    /* } */
+    /* else { */
+    value_t opaque = cvalue(fl_ctx, jl_ast_ctx(fl_ctx)->jvtype, sizeof(void*));
+    *(jl_value_t**)cv_data((cvalue_t*)ptr(opaque)) = (jl_value_t*)defmod;
+    scmresult = fl_cons(fl_ctx, scm, opaque);
+    /* } */
     fl_free_gc_handles(fl_ctx, 1);
 
     JL_GC_POP();
@@ -584,6 +584,19 @@ static value_t julia_to_scm_(fl_context_t *fl_ctx, jl_value_t *v)
         return julia_to_list2(fl_ctx, (jl_value_t*)inert_sym, jl_fieldref(v,0));
     if (jl_typeis(v, jl_newvarnode_type))
         return julia_to_list2(fl_ctx, (jl_value_t*)newvar_sym, jl_fieldref(v,0));
+    if (jl_typeis(v, jl_globalref_type)) {
+        jl_module_t *m = jl_globalref_mod(v);
+        jl_sym_t *sym = jl_globalref_name(v);
+        if (m == jl_core_module)
+            return julia_to_list2(fl_ctx, (jl_value_t*)core_sym,
+                                  (jl_value_t*)sym);
+        value_t args = julia_to_list2(fl_ctx, (jl_value_t*)m, (jl_value_t*)sym);
+        fl_gc_handle(fl_ctx, &args);
+        value_t hd = julia_to_scm_(fl_ctx, (jl_value_t*)globalref_sym);
+        value_t scmv = fl_cons(fl_ctx, hd, args);
+        fl_free_gc_handles(fl_ctx, 1);
+        return scmv;
+    }
     if (jl_is_long(v) && fits_fixnum(jl_unbox_long(v)))
         return fixnum(jl_unbox_long(v));
     if (jl_is_ssavalue(v))

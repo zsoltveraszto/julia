@@ -232,9 +232,25 @@ static jl_value_t *eval(jl_value_t *e, interpreter_state *s)
     }
     else if (ex->head == method_sym) {
         jl_sym_t *fname = (jl_sym_t*)args[0];
-        assert(jl_expr_nargs(ex) != 1 || jl_is_symbol(fname));
+        assert(jl_expr_nargs(ex) != 1 || jl_is_symbol(fname) ||
+               jl_is_globalref(fname));
 
-        if (jl_is_symbol(fname)) {
+        if (jl_is_globalref(fname)) {
+            // allow defining a function using a existing owning binding
+            // in order for the following code, which may be the result of
+            // macro expansion, to work.
+            //
+            //     global f
+            //     M.f() = ...
+            jl_module_t *m = (jl_module_t*)jl_data_ptr(fname)[0];
+            jl_sym_t *sym = (jl_sym_t*)jl_data_ptr(fname)[1];
+            assert(jl_is_symbol(sym));
+            jl_binding_t *b = jl_get_binding_for_method_def(m, sym);
+            jl_value_t *gf = jl_generic_function_def(sym, &b->value,
+                                                     (jl_value_t*)m, b);
+            if (jl_expr_nargs(ex) == 1)
+                return gf;
+        } else if (jl_is_symbol(fname)) {
             jl_value_t **bp=NULL;
             jl_value_t *bp_owner=NULL;
             jl_binding_t *b=NULL;
