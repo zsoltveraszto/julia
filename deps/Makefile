@@ -2080,18 +2080,10 @@ compile-virtualenv: $(VIRTUALENV_SOURCE)
 check-virtualenv: compile-virtualenv
 install-virtualenv: $(VIRTUALENV_TARGET)
 
-## libgit2
-
-LIBGIT2_GIT_URL := git://github.com/libgit2/libgit2.git
-LIBGIT2_TAR_URL = https://api.github.com/repos/libgit2/libgit2/tarball/$1
-$(eval $(call git-external,libgit2,LIBGIT2,CMakeLists.txt,build/libgit2.$(SHLIB_EXT),$(SRCDIR)/srccache))
-
-LIBGIT2_OBJ_SOURCE := $(BUILDDIR)/$(LIBGIT2_SRC_DIR)/libgit2.$(SHLIB_EXT)
-LIBGIT2_OBJ_TARGET := $(build_shlibdir)/libgit2.$(SHLIB_EXT)
-
-LIBGIT2_OPTS := $(CMAKE_COMMON) -DTHREADSAFE=ON
+# libgit and libssh share options, so declare them here
+LIBGIT2_OPTS := $(CMAKE_COMMON) -DTHREADSAFE=ON -DUSE_SSH=ON
 ifeq ($(OS),WINNT)
-LIBGIT2_OPTS += -DWIN32=ON -DMINGW=ON -DUSE_SSH=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo
+LIBGIT2_OPTS += -DWIN32=ON -DMINGW=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ifneq ($(ARCH),x86_64)
 LIBGIT2_OPTS += -DCMAKE_C_FLAGS="-mincoming-stack-boundary=2"
 endif
@@ -2105,7 +2097,64 @@ else
 LIBGIT2_OPTS += -DCMAKE_BUILD_TYPE=Release
 endif
 
-$(BUILDDIR)/$(LIBGIT2_SRC_DIR)/Makefile: $(SRCDIR)/srccache/$(LIBGIT2_SRC_DIR)/CMakeLists.txt
+## libssh2 (for libgit2)
+
+LIBSSH2_GIT_URL := git://github.com/libssh2/libssh2.git
+LIBSSH2_TAR_URL = https://api.github.com/repos/libssh2/libssh2/tarball/$1
+$(eval $(call git-external,libssh2,LIBSSH2,CMakeLists.txt,build/libssh2.$(SHLIB_EXT),$(SRCDIR)/srccache))
+
+LIBSSH2_OBJ_SOURCE := $(BUILDDIR)/$(LIBSSH2_SRC_DIR)/src/libssh2.$(SHLIB_EXT)
+LIBSSH2_OBJ_TARGET := $(build_shlibdir)/libssh2.$(SHLIB_EXT)
+
+LIBSSH2_OPTS := $(LIBGIT2_OPTS) -DBUILD_SHARED_LIBS=ON
+ifeq ($(BUILD_OS),WINNT)
+LIBSSH2_OPTS += -DCRYPTO_BACKEND=WinCNG
+else
+LIBSSH2_OPTS += -DCRYPTO_BACKEND=OpenSSL
+endif
+
+
+$(BUILDDIR)/$(LIBSSH2_SRC_DIR)/Makefile: $(SRCDIR)/srccache/$(LIBSSH2_SRC_DIR)/CMakeLists.txt
+	mkdir -p $(dir $@)
+	cd $(dir $@) && \
+	$(CMAKE) $(dir $<) $(LIBSSH2_OPTS)
+	touch -c $@
+$(LIBSSH2_OBJ_SOURCE): $(BUILDDIR)/$(LIBSSH2_SRC_DIR)/Makefile
+	$(MAKE) -C $(dir $<)
+	touch -c $@
+$(BUILDDIR)/$(LIBSSH2_SRC_DIR)/checked: $(LIBSSH2_OBJ_SOURCE)
+ifeq ($(OS),$(BUILD_OS))
+	$(MAKE) -C $(dir $@) test
+endif
+	echo 1 > $@
+$(LIBSSH2_OBJ_TARGET): $(LIBSSH2_OBJ_SOURCE) | $(build_shlibdir)
+	cp $< $@
+	# Also copy over the .pc file so libgit2 can find it
+	cp /usr/lib/pkgconfig/libssl.pc $(PKG_CONFIG_LIBDIR)
+	cp /usr/lib/pkgconfig/libcrypto.pc $(PKG_CONFIG_LIBDIR)
+	cp $(BUILDDIR)/$(LIBSSH2_SRC_DIR)/src/libssh2.pc $(PKG_CONFIG_LIBDIR)
+	touch -c $@
+
+clean-libssh2:
+	-rm -rf $(BUILDDIR)/$(LIBSSH2_SRC_DIR)
+	-rm -f $(LIBSSH2_OBJ_TARGET)
+
+get-libssh2: $(LIBSSH2_SRC_FILE)
+configure-libssh2: $(BUILDDIR)/$(LIBSSH2_SRC_DIR)/Makefile
+compile-libssh2: $(LIBSSH2_OBJ_SOURCE)
+check-libssh2: $(BUILDDIR)/$(LIBSSH2_SRC_DIR)/checked
+install-libssh2: $(LIBSSH2_OBJ_TARGET)
+
+## libgit2
+
+LIBGIT2_GIT_URL := git://github.com/libgit2/libgit2.git
+LIBGIT2_TAR_URL = https://api.github.com/repos/libgit2/libgit2/tarball/$1
+$(eval $(call git-external,libgit2,LIBGIT2,CMakeLists.txt,build/libgit2.$(SHLIB_EXT),$(SRCDIR)/srccache))
+
+LIBGIT2_OBJ_SOURCE := $(BUILDDIR)/$(LIBGIT2_SRC_DIR)/libgit2.$(SHLIB_EXT)
+LIBGIT2_OBJ_TARGET := $(build_shlibdir)/libgit2.$(SHLIB_EXT)
+
+$(BUILDDIR)/$(LIBGIT2_SRC_DIR)/Makefile: $(SRCDIR)/srccache/$(LIBGIT2_SRC_DIR)/CMakeLists.txt $(LIBSSH2_OBJ_TARGET)
 	-cd $(SRCDIR)/srccache/$(LIBGIT2_SRC_DIR) && patch -p1 -f < $(SRCDIR)/libgit2-require-openssl.patch
 	mkdir -p $(dir $@)
 	cd $(dir $@) && \

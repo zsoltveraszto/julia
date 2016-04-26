@@ -202,8 +202,8 @@ BUILD_LLDB := 0
 CMAKE ?= cmake
 CMAKE_GENERATOR ?= make
 
-# Point pkg-config to only look at our libraries
-export PKG_CONFIG_LIBDIR = $(JULIAHOME)/usr/lib/pkgconfig
+# Point pkg-config to look at our libraries first
+export PKG_CONFIG_PATH = $(JULIAHOME)/usr/lib/pkgconfig
 
 # Figure out OS and architecture
 BUILD_OS := $(shell uname)
