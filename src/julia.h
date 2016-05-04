@@ -614,6 +614,7 @@ typedef struct _jl_gcframe_t {
 
 JL_DLLEXPORT int jl_gc_enable(int on);
 JL_DLLEXPORT int jl_gc_is_enabled(void);
+JL_DLLEXPORT int jl_finalizers_enable(int on);
 JL_DLLEXPORT int64_t jl_gc_total_bytes(void);
 JL_DLLEXPORT uint64_t jl_gc_total_hrtime(void);
 JL_DLLEXPORT int64_t jl_gc_diff_total_bytes(void);
@@ -1390,6 +1391,8 @@ typedef struct _jl_handler_t {
     jl_gcframe_t *gcstack;
     struct _jl_handler_t *prev;
     int8_t gc_state;
+    int8_t gc_enabled;
+    int8_t finalizers_enabled;
 #ifdef JULIA_ENABLE_THREADING
     size_t locks_len;
 #endif
@@ -1492,6 +1495,8 @@ STATIC_INLINE void jl_eh_restore_state(jl_handler_t *eh)
     }
 #endif
     JL_SIGATOMIC_END();
+    jl_finalizers_enable(eh->finalizers_enabled);
+    jl_gc_enable(eh->gc_enabled);
 }
 
 JL_DLLEXPORT void jl_enter_handler(jl_handler_t *eh);

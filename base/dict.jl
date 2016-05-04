@@ -537,6 +537,8 @@ function rehash!{K,V}(h::Dict{K,V}, newsz = length(h.keys))
     count = 0
     maxprobe = h.maxprobe
 
+    # make sure the following is atomic wrt finalizers
+    prev_finalizers = gc_finalizers_enable(false)
     for i = 1:sz
         if olds[i] == 0x1
             k = oldk[i]
@@ -551,11 +553,6 @@ function rehash!{K,V}(h::Dict{K,V}, newsz = length(h.keys))
             keys[index] = k
             vals[index] = v
             count += 1
-
-            if h.age != age0
-                # if `h` is changed by a finalizer, retry
-                return rehash!(h, newsz)
-            end
         end
     end
 
@@ -565,7 +562,8 @@ function rehash!{K,V}(h::Dict{K,V}, newsz = length(h.keys))
     h.count = count
     h.ndel = 0
     h.maxprobe = maxprobe
-    assert(h.age == age0)
+    @assert h.age == age0
+    gc_finalizers_enable(prev_finalizers)
 
     return h
 end
@@ -584,6 +582,7 @@ function sizehint!(d::Dict, newsz)
 end
 
 function empty!{K,V}(h::Dict{K,V})
+    prev_finalizers = gc_finalizers_enable(false)
     fill!(h.slots, 0x0)
     sz = length(h.slots)
     empty!(h.keys)
@@ -594,6 +593,7 @@ function empty!{K,V}(h::Dict{K,V})
     h.count = 0
     h.age += 1
     h.idxfloor = 1
+    gc_finalizers_enable(prev_finalizers)
     return h
 end
 
@@ -698,6 +698,7 @@ function setindex!{K,V}(h::Dict{K,V}, v0, key0)
     end
     v = convert(V, v0)
 
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex2(h, key)
 
     if index > 0
@@ -707,37 +708,31 @@ function setindex!{K,V}(h::Dict{K,V}, v0, key0)
     else
         _setindex!(h, v, key, -index)
     end
+    gc_finalizers_enable(prev_finalizers)
 
     return h
 end
 
-function get!{K,V}(h::Dict{K,V}, key0, default)
-    key = convert(K,key0)
-    if !isequal(key,key0)
-        throw(ArgumentError("$key0 is not a valid key for type $K"))
-    end
-
-    index = ht_keyindex2(h, key)
-
-    index > 0 && return h.vals[index]
-
-    v = convert(V,  default)
-    _setindex!(h, v, key, -index)
-    return v
-end
-
+get!{K,V}(h::Dict{K,V}, key0, default) = get!(()->default, h, key0)
 function get!{K,V}(default::Callable, h::Dict{K,V}, key0)
     key = convert(K,key0)
     if !isequal(key,key0)
         throw(ArgumentError("$key0 is not a valid key for type $K"))
     end
 
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex2(h, key)
 
-    index > 0 && return h.vals[index]
+    if index > 0
+        val = h.vals[index]
+        gc_finalizers_enable(prev_finalizers)
+        return val
+    end
 
     age0 = h.age
-    v = convert(V,  default())
+    gc_finalizers_enable(prev_finalizers)
+    v = convert(V, default())
+    prev_finalizers = gc_finalizers_enable(false)
     if h.age != age0
         index = ht_keyindex2(h, key)
     end
@@ -748,6 +743,7 @@ function get!{K,V}(default::Callable, h::Dict{K,V}, key0)
     else
         _setindex!(h, v, key, -index)
     end
+    gc_finalizers_enable(prev_finalizers)
     return v
 end
 
@@ -761,26 +757,47 @@ end
 
 
 function getindex{K,V}(h::Dict{K,V}, key)
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex(h, key)
-    return (index<0) ? throw(KeyError(key)) : h.vals[index]::V
+    index < 0 && throw(KeyError(key))
+    val = h.vals[index]::V
+    gc_finalizers_enable(prev_finalizers)
+    return val
 end
 
 function get{K,V}(h::Dict{K,V}, key, default)
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex(h, key)
-    return (index<0) ? default : h.vals[index]::V
+    val =  (index < 0) ? default : h.vals[index]::V
+    gc_finalizers_enable(prev_finalizers)
+    return val
 end
 
 function get{K,V}(default::Callable, h::Dict{K,V}, key)
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex(h, key)
-    return (index<0) ? default() : h.vals[index]::V
+    if index < 0
+        gc_finalizers_enable(prev_finalizers)
+        return default()
+    end
+    val = h.vals[index]::V
+    gc_finalizers_enable(prev_finalizers)
+    return val
 end
 
 haskey(h::Dict, key) = (ht_keyindex(h, key) >= 0)
 in{T<:Dict}(key, v::KeyIterator{T}) = (ht_keyindex(v.dict, key) >= 0)
 
 function getkey{K,V}(h::Dict{K,V}, key, default)
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex(h, key)
-    return (index<0) ? default : h.keys[index]::K
+    if index < 0
+        gc_finalizers_enable(prev_finalizers)
+        return default
+    end
+    val = h.keys[index]::V
+    gc_finalizers_enable(prev_finalizers)
+    return val
 end
 
 function _pop!(h::Dict, index)
@@ -790,13 +807,24 @@ function _pop!(h::Dict, index)
 end
 
 function pop!(h::Dict, key)
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex(h, key)
-    index > 0 ? _pop!(h, index) : throw(KeyError(key))
+    index < 0 && throw(KeyError(key))
+    val = _pop!(h, index)
+    gc_finalizers_enable(prev_finalizers)
+    return val
 end
 
 function pop!(h::Dict, key, default)
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex(h, key)
-    index > 0 ? _pop!(h, index) : default
+    if index < 0
+        gc_finalizers_enable(prev_finalizers)
+        return default
+    end
+    val = _pop!(h, index)
+    gc_finalizers_enable(prev_finalizers)
+    return val
 end
 
 function _delete!(h::Dict, index)
@@ -806,13 +834,17 @@ function _delete!(h::Dict, index)
     h.ndel += 1
     h.count -= 1
     h.age += 1
-    h
+    return h
 end
 
 function delete!(h::Dict, key)
+    prev_finalizers = gc_finalizers_enable(false)
     index = ht_keyindex(h, key)
-    if index > 0; _delete!(h, index); end
-    h
+    if index > 0
+        _delete!(h, index)
+    end
+    gc_finalizers_enable(prev_finalizers)
+    return h
 end
 
 function skip_deleted(h::Dict, i)
@@ -840,17 +872,15 @@ next{T<:Dict}(v::ValueIterator{T}, i) = (v.dict.vals[i], skip_deleted(v.dict,i+1
 # weak key dictionaries
 
 type WeakKeyDict{K,V} <: Associative{K,V}
-    ht::Dict{Any,V}
-    deleter::Function
-
-    WeakKeyDict() = new(Dict{Any,V}(), identity)
+    ht::Dict{WeakRef,V}
+    WeakKeyDict() = new(Dict{WeakRef,V}())
 end
 WeakKeyDict() = WeakKeyDict{Any,Any}()
 
-function weak_key_delete!(t::Dict, k)
+function weak_key_delete!(t::Dict, k::WeakRef)
     # when a weak key is finalized, remove from dictionary if it is still there
     wk = getkey(t, k, secret_table_token)
-    if !is(wk,secret_table_token) && is(wk.value, k)
+    if is(wk, k)
         delete!(t, k)
     end
 end
@@ -858,14 +888,12 @@ end
 function setindex!{K}(wkh::WeakKeyDict{K}, v, key)
     t = wkh.ht
     k = convert(K, key)
-    if is(wkh.deleter, identity)
-        wkh.deleter = x->weak_key_delete!(t, x)
-    end
-    t[WeakRef(k)] = v
+    wr = WeakRef(k)
+    t[wr] = v
     # TODO: it might be better to avoid the finalizer, allow
     # wiped WeakRefs to remain in the table, and delete them as
     # they are discovered by getindex and setindex!.
-    finalizer(k, wkh.deleter)
+    finalizer(k, x->weak_key_delete!(t, wr))
     return t
 end
 

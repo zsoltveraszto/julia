@@ -813,15 +813,16 @@ static void to_function(jl_lambda_info_t *li)
     if (!nested_compile && dump_compiles_stream != NULL)
         last_time = jl_hrtime();
     nested_compile = true;
-    jl_gc_inhibit_finalizers(nested_compile);
     std::unique_ptr<Module> m;
     Function *f = NULL, *specf = NULL;
     // actually do the work of emitting the function
     JL_TRY {
+        int last_inhibited = jl_finalizers_enable(0);
         m = emit_function(li, &li->functionObjectsDecls);
         f = (Function*)li->functionObjectsDecls.functionObject;
         specf = (Function*)li->functionObjectsDecls.specFunctionObject;
         //n_emit++;
+        jl_finalizers_enable(last_inhibited);
     }
     JL_CATCH {
         // something failed! this is very bad, since other WIP may be pointing to this function
@@ -871,7 +872,6 @@ static void to_function(jl_lambda_info_t *li)
     }
     li->inCompile = 0;
     nested_compile = last_n_c;
-    jl_gc_inhibit_finalizers(nested_compile);
     JL_UNLOCK(&codegen_lock);
     JL_SIGATOMIC_END();
     if (dump_compiles_stream != NULL) {
@@ -3866,7 +3866,7 @@ static Function *jl_cfunction_object(jl_function_t *ff, jl_value_t *declrt, jl_t
     DebugLoc olddl = builder.getCurrentDebugLocation();
     bool last_n_c = nested_compile;
     nested_compile = true;
-    jl_gc_inhibit_finalizers(nested_compile);
+    int last_inhibited = jl_finalizers_enable(0);
     Function *f = gen_cfun_wrapper(ff, crt, (jl_tupletype_t*)argt, sf, declrt, (jl_tupletype_t*)sigt);
     // Restore the previous compile context
     if (old != NULL) {
@@ -3874,7 +3874,7 @@ static Function *jl_cfunction_object(jl_function_t *ff, jl_value_t *declrt, jl_t
         builder.SetCurrentDebugLocation(olddl);
     }
     nested_compile = last_n_c;
-    jl_gc_inhibit_finalizers(nested_compile);
+    jl_finalizers_enable(last_inhibited);
     JL_SIGATOMIC_END();
     JL_GC_POP();
     return f;

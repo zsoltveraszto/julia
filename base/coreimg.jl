@@ -64,6 +64,7 @@ end
 include("reduce.jl")
 
 ## core structures
+gc_finalizers_enable(on::Bool) = true # Core.Inference doesn't use finalizers
 include("intset.jl")
 include("dict.jl")
 include("iterator.jl")

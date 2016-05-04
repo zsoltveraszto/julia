@@ -42,6 +42,7 @@ typedef struct _jl_tls_states_t {
     volatile int8_t gc_state;
     volatile int8_t in_finalizer;
     int8_t disable_gc;
+    int8_t disable_finalizers;
     struct _jl_thread_heap_t *heap;
     struct _jl_module_t *current_module;
     struct _jl_task_t *volatile current_task;

@@ -443,7 +443,8 @@ static void jl_gc_signal_end(void)
 
 #endif
 
-static int jl_gc_finalizers_inhibited; // don't run finalizers during codegen #11956
+static volatile uint64_t jl_finalizers_disabled_counter; // don't run finalizers during codegen (for example, #11956)
+                                                         // counter keeps track of per-thread state
 
 // malloc wrappers, aligned allocation
 
@@ -539,16 +540,28 @@ static void run_finalizers(void)
     arraylist_free(&copied_list);
 }
 
-void jl_gc_inhibit_finalizers(int state)
+JL_DLLEXPORT int jl_finalizers_enable(int on)
 {
-    // NOTE: currently only called with the codegen lock held, but might need
-    // more synchronization in the future
-    if (jl_gc_finalizers_inhibited && !state && !jl_in_finalizer) {
-        jl_in_finalizer = 1;
-        run_finalizers();
-        jl_in_finalizer = 0;
+    jl_tls_states_t *ptls = jl_get_ptls_states();
+    int prev = !ptls->disable_finalizers;
+    ptls->disable_finalizers = (on == 0);
+    if (on && !prev) {
+        // disable -> enable
+        // TODO: the atomics are in the wrong place / missing some thread locks
+        jl_atomic_fetch_add(&jl_finalizers_disabled_counter, -1);
+        if (jl_finalizers_disabled_counter == 0) {
+            int8_t was_in_finalizer = jl_in_finalizer;
+            jl_in_finalizer = 1;
+            run_finalizers();
+            jl_in_finalizer = was_in_finalizer;
+        }
     }
-    jl_gc_finalizers_inhibited = state;
+    else if (prev && !on) {
+        // enable -> disable
+        jl_atomic_fetch_add(&jl_finalizers_disabled_counter, 1);
+        // TODO: check if finalizers are running and wait for them to finish
+    }
+    return prev;
 }
 
 static void schedule_all_finalizers(arraylist_t *flist)
@@ -2056,7 +2069,7 @@ static void post_mark(arraylist_t *list, int dryrun)
 }
 
 // collector entry point and control
-static volatile uint64_t jl_gc_disable_counter = 0;
+static volatile uint64_t jl_gc_disable_counter = 0; // counter keeps track of per-thread state
 
 JL_DLLEXPORT int jl_gc_enable(int on)
 {
@@ -2357,7 +2370,7 @@ JL_DLLEXPORT void jl_gc_collect(int full)
     JL_SIGATOMIC_END();
     jl_gc_state_set(old_state, JL_GC_STATE_WAITING);
 
-    if (!jl_gc_finalizers_inhibited) {
+    if (!jl_finalizers_disabled_counter) {
         int8_t was_in_finalizer = jl_in_finalizer;
         jl_in_finalizer = 1;
         run_finalizers();
