@@ -493,15 +493,13 @@ type Future <: AbstractRemoteRef
     v::Nullable{Any}
 
     Future(w::Int, rrid::RRID) = Future(w, rrid, Nullable{Any}())
-    Future(w::Int, rrid::RRID, v) = (r = new(w,rrid.whence,rrid.id,v); test_existing_ref(r))
+    Future(w::Int, rrid::RRID, v) = (r = new(w,rrid.whence,rrid.id,v); return test_existing_ref(r))
 end
 
 function finalize_future(f::Future)
     if f.where > 0
         isnull(f.v) && send_del_client(f)
         f.where = 0
-        f.whence = 0
-        f.id = 0
         f.v = Nullable{Any}()
     end
     f
@@ -512,7 +510,7 @@ type RemoteChannel{T<:AbstractChannel} <: AbstractRemoteRef
     whence::Int
     id::Int
 
-    RemoteChannel(w::Int, rrid::RRID) = (r = new(w, rrid.whence, rrid.id); test_existing_ref(r))
+    RemoteChannel(w::Int, rrid::RRID) = (r = new(w, rrid.whence, rrid.id); return test_existing_ref(r))
 end
 
 function test_existing_ref(r::Future)
@@ -527,7 +525,7 @@ function test_existing_ref(r::Future)
     end
     client_refs[r] = true
     finalizer(r, finalize_future)
-    r
+    return r
 end
 
 function test_existing_ref(r::RemoteChannel)
@@ -535,17 +533,15 @@ function test_existing_ref(r::RemoteChannel)
     !is(found,false) && (client_refs[r] == true) && return found
     client_refs[r] = true
     finalizer(r, finalize_remote_channel)
-    r
+    return r
 end
 
 function finalize_remote_channel(r::RemoteChannel)
     if r.where > 0
         send_del_client(r)
         r.where = 0
-        r.whence = 0
-        r.id = 0
     end
-    r
+    return r
 end
 
 Future(w::LocalProcess) = Future(w.id)
@@ -614,18 +610,13 @@ end
 
 del_client(id, client) = del_client(PGRP, id, client)
 function del_client(pg, id, client)
-# As a workaround to issue https://github.com/JuliaLang/julia/issues/14445
-# the dict/set updates are executed asynchronously so that they do
-# not occur in the midst of a gc. The `@async` prefix must be removed once
-# 14445 is fixed.
-    @async begin
-        rv = get(pg.refs, id, false)
-        if rv != false
-            delete!(rv.clientset, client)
-            if isempty(rv.clientset)
-                delete!(pg.refs, id)
-                #print("$(myid()) collected $id\n")
-            end
+    rv = get(pg.refs, id, false)
+
+    if rv != false
+        delete!(rv.clientset, client)
+        if isempty(rv.clientset)
+            delete!(pg.refs, id)
+            #print("$(myid()) collected $id\n")
         end
     end
     nothing
