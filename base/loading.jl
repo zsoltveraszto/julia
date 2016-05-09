@@ -42,8 +42,9 @@ function find_source_file(file)
     isfile(file2) ? file2 : nothing
 end
 
-function find_all_in_cache_path(mod::Symbol)
-    name = string(mod)
+find_all_in_cache_path(mod::Symbol) = find_all_in_cache_path(string(mod))
+
+function find_all_in_cache_path(name::AbstractString)
     paths = AbstractString[]
     for prefix in LOAD_CACHE_PATH
         path = joinpath(prefix, name*".ji")
@@ -342,18 +343,24 @@ function evalfile(path::AbstractString, args::Vector{UTF8String}=UTF8String[])
 end
 evalfile(path::AbstractString, args::Vector) = evalfile(path, UTF8String[args...])
 
-function create_expr_cache(input::AbstractString, output::AbstractString)
+function create_expr_cache(input::AbstractString, output::AbstractString, quiet::Bool = false)
     isfile(output) && rm(output)
+
     code_object = """
         while !eof(STDIN)
             eval(Main, deserialize(STDIN))
         end
         """
-    io, pobj = open(detach(`$(julia_cmd())
-                           --output-ji $output --output-incremental=yes
-                           --startup-file=no --history-file=no
-                           --color=$(have_color ? "yes" : "no")
-                           --eval $code_object`), "w", STDOUT)
+
+    cmd = detach(`$(julia_cmd()) --output-ji $output --output-incremental=yes
+                          --startup-file=no --history-file=no
+                          --color=$(have_color ? "yes" : "no")
+                          --eval $code_object`)
+
+    if quiet
+        cmd = pipeline(cmd, stdout=DevNull, stderr=DevNull)
+    end
+    io, pobj = open(cmd, "w", STDOUT)
     try
         serialize(io, quote
                   empty!(Base.LOAD_PATH)
@@ -386,8 +393,8 @@ function create_expr_cache(input::AbstractString, output::AbstractString)
     end
 end
 
-compilecache(mod::Symbol) = compilecache(string(mod))
-function compilecache(name::ByteString)
+compilecache(mod::Symbol, quiet::Bool = false) = compilecache(string(mod), quiet)
+function compilecache(name::ByteString, quiet::Bool = false)
     myid() == 1 || error("can only precompile from node 1")
     path = find_in_path(name, nothing)
     path === nothing && throw(ArgumentError("$name not found in path"))
@@ -396,7 +403,7 @@ function compilecache(name::ByteString)
         mkpath(cachepath)
     end
     cachefile = abspath(cachepath, name*".ji")
-    if !success(create_expr_cache(path, cachefile))
+    if !success(create_expr_cache(path, cachefile, quiet))
         error("Failed to precompile $name to $cachefile")
     end
     return cachefile

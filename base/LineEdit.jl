@@ -46,6 +46,7 @@ type Prompt <: TextInterface
     complete
     on_enter
     on_done
+    on_ready
     hist
     sticky::Bool
 end
@@ -1579,11 +1580,12 @@ function Prompt(prompt;
     complete = EmptyCompletionProvider(),
     on_enter = default_enter_cb,
     on_done = ()->nothing,
+    on_ready = (state)->nothing,
     hist = EmptyHistoryProvider(),
     sticky = false)
 
     Prompt(prompt, first_prompt, prompt_prefix, prompt_suffix, keymap_dict, keymap_func_data,
-        complete, on_enter, on_done, hist, sticky)
+        complete, on_enter, on_done, on_ready, hist, sticky)
 end
 
 run_interface(::Prompt) = nothing
@@ -1626,6 +1628,7 @@ function prompt!(term, prompt, s = init_state(term, prompt))
     enable_bracketed_paste(term)
     try
         activate(prompt, s, term, term)
+        s.current_mode.on_ready(s)
         while true
             map = keymap(s, prompt)
             fcn = match_input(map, s)
