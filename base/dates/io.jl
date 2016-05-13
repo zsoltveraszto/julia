@@ -22,6 +22,16 @@ function Base.string(dt::Date)
     return "$yy-$mm-$dd"
 end
 Base.show(io::IO,x::Date) = print(io,string(x))
+function Base.string(t::Time)
+    h,mi,s = hour(t),minute(t),second(t)
+    hh = lpad(h,2,"0")
+    mii = lpad(mi,2,"0")
+    ss = lpad(s,2,"0")
+    nss = tons(Millisecond(t)) + tons(Microsecond(t)) + tons(Nanosecond(t))
+    ns = nss == 0 ? "" : rstrip(@sprintf("%.9f", nss/1e+9)[2:end],'0')
+    return "$hh:$mii:$ss$(ns)"
+end
+Base.show(io::IO,x::Time) = print(io,string(x))
 
 ### Parsing
 const english = Dict{String,Int}("january"=>1,"february"=>2,"march"=>3,"april"=>4,

@@ -112,7 +112,7 @@ function test_all_combos()
             end
         end
         if T == Dates.DateTime
-            for P in subtypes(Dates.TimePeriod)
+            for P in (Dates.Hour,Dates.Minute,Dates.Second,Dates.Millisecond)
                 for pos_step in (P(1),P(2),P(50),P(2048),P(10000))
                     # empty range
                     dr = f1:pos_step:l1
@@ -385,6 +385,45 @@ b = Dates.Date(2013,2,1)
 @test first(a:typemax(Dates.Date)) == a
 @test first(typemin(Dates.Date):typemax(Dates.Date)) == typemin(Dates.Date)
 
+# Time ranges
+dr  = Dates.Time(23,1,1):Dates.Time(23,2,1)
+dr1 = Dates.Time(23,1,1):Dates.Time(23,1,1)
+dr2 = Dates.Time(23,1,1):Dates.Time(22,2,1) # empty range
+dr3 = Dates.Time(23,1,1):Dates.Minute(-1):Dates.Time(22,1,1) # negative step
+# Big ranges
+dr8 = typemin(Dates.Time):typemax(Dates.Time)
+dr9 = typemin(Dates.Time):Dates.Nanosecond(1):typemax(Dates.Time)
+# Non-default steps
+dr10 = typemax(Dates.Time):Dates.Microsecond(-1):typemin(Dates.Time)
+dr11 = typemin(Dates.Time):Dates.Millisecond(1):typemax(Dates.Time)
+dr12 = typemin(Dates.Time):Dates.Minute(1):typemax(Dates.Time)
+dr13 = typemin(Dates.Time):Dates.Hour(1):typemax(Dates.Time)
+dr14 = typemin(Dates.Time):Dates.Millisecond(10):typemax(Dates.Time)
+dr15 = typemin(Dates.Time):Dates.Minute(100):typemax(Dates.Time)
+dr16 = typemin(Dates.Time):Dates.Hour(1000):typemax(Dates.Time)
+dr17 = typemax(Dates.Time):Dates.Millisecond(-10000):typemin(Dates.Time)
+dr18 = typemax(Dates.Time):Dates.Minute(-100000):typemin(Dates.Time)
+dr19 = typemax(Dates.Time):Dates.Hour(-1000000):typemin(Dates.Time)
+dr20 = typemin(Dates.Time):Dates.Microsecond(2):typemax(Dates.Time)
+
+drs = Any[dr,dr1,dr2,dr3,dr8,dr9,dr10,
+          dr11,dr12,dr13,dr14,dr15,dr16,dr17,dr18,dr19,dr20]
+
+@test map(length,drs) == map(x->size(x)[1],drs)
+@test all(x->findin(x,x) == [1:length(x);], drs[1:4])
+@test isempty(dr2)
+@test all(x->reverse(x) == last(x):-step(x):first(x),drs)
+@test all(x->minimum(x) == (step(x) < zero(step(x)) ? last(x) : first(x)),drs[4:end])
+@test all(x->maximum(x) == (step(x) < zero(step(x)) ? first(x) : last(x)),drs[4:end])
+@test_throws MethodError dr + 1
+
+a = Dates.Time(23,1,1)
+@test map(x->a in x,drs[1:4]) == [true,true,false,true]
+@test a in dr
+
+@test all(x->sort(x) == (step(x) < zero(step(x)) ? reverse(x) : x),drs)
+@test all(x->step(x) < zero(step(x)) ? issorted(reverse(x)) : issorted(x),drs)
+
 # Non-default step sizes
 @test length(typemin(Dates.Date):Dates.Week(1):typemax(Dates.Date)) == 26351950414948059
 # Big Month/Year ranges
@@ -400,6 +439,7 @@ b = Dates.Date(2013,2,1)
 @test length(typemin(Dates.DateTime):Dates.Second(1):typemax(Dates.DateTime)) == 9223372017043200
 @test length(typemin(DateTime):Dates.Millisecond(1):typemax(DateTime)) == 9223372017043199001
 
+a = Dates.Date(2013,1,1)
 c = Dates.Date(2013,6,1)
 @test length(a:Dates.Month(1):c) == 6
 @test [a:Dates.Month(1):c;] == [a + Dates.Month(1)*i for i in 0:5]

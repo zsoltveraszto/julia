@@ -49,6 +49,8 @@ h = Dates.Hour(1)
 mi = Dates.Minute(1)
 s = Dates.Second(1)
 ms = Dates.Millisecond(1)
+us = Dates.Microsecond(1)
+ns = Dates.Nanosecond(1)
 @test Dates.Year(y) == y
 @test Dates.Month(m) == m
 @test Dates.Week(w) == w
@@ -57,6 +59,8 @@ ms = Dates.Millisecond(1)
 @test Dates.Minute(mi) == mi
 @test Dates.Second(s) == s
 @test Dates.Millisecond(ms) == ms
+@test Dates.Microsecond(ms) == ms
+@test Dates.Nanosecond(ms) == ms
 @test typeof(Int8(y)) <: Int8
 @test typeof(UInt8(y)) <: UInt8
 @test typeof(Int16(y)) <: Int16
@@ -99,6 +103,8 @@ ms = Dates.Millisecond(1)
 @test mi == mi
 @test s == s
 @test ms == ms
+@test us == us
+@test ns == ns
 y2 = Dates.Year(2)
 @test y < y2
 @test y2 > y
@@ -147,11 +153,15 @@ y2 = Dates.Year(2)
 @test typeof(y+mi) <: Dates.CompoundPeriod
 @test typeof(y+s) <: Dates.CompoundPeriod
 @test typeof(y+ms) <: Dates.CompoundPeriod
+@test typeof(y+us) <: Dates.CompoundPeriod
+@test typeof(y+ns) <: Dates.CompoundPeriod
 @test y > m
 @test d < w
 @test mi < h
 @test ms < h
 @test ms < mi
+@test us < ms
+@test ns < us
 @test typemax(Dates.Year) == Dates.Year(typemax(Int64))
 @test typemax(Dates.Year) + y == Dates.Year(-9223372036854775808)
 @test typemin(Dates.Year) == Dates.Year(-9223372036854775808)
@@ -214,6 +224,10 @@ test = ((((((((dt + y) - m) + w) - d) + h) - mi) + s) - ms)
 @test zero(Dates.Second(10)) == Dates.Second(0)
 @test zero(Dates.Millisecond) == Dates.Millisecond(0)
 @test zero(Dates.Millisecond(10)) == Dates.Millisecond(0)
+@test zero(Dates.Microsecond) == Dates.Microsecond(0)
+@test zero(Dates.Microsecond(10)) == Dates.Microsecond(0)
+@test zero(Dates.Nanosecond) == Dates.Nanosecond(0)
+@test zero(Dates.Nanosecond(10)) == Dates.Nanosecond(0)
 @test one(Dates.Year) == Dates.Year(1)
 @test one(Dates.Year(10)) == Dates.Year(1)
 @test one(Dates.Month) == Dates.Month(1)
@@ -228,6 +242,10 @@ test = ((((((((dt + y) - m) + w) - d) + h) - mi) + s) - ms)
 @test one(Dates.Second(10)) == Dates.Second(1)
 @test one(Dates.Millisecond) == Dates.Millisecond(1)
 @test one(Dates.Millisecond(10)) == Dates.Millisecond(1)
+@test one(Dates.Microsecond) == Dates.Microsecond(1)
+@test one(Dates.Microsecond(10)) == Dates.Microsecond(1)
+@test one(Dates.Nanosecond) == Dates.Nanosecond(1)
+@test one(Dates.Nanosecond(10)) == Dates.Nanosecond(1)
 @test Dates.Year(-1) < Dates.Year(1)
 @test !(Dates.Year(-1) > Dates.Year(1))
 @test Dates.Year(1) == Dates.Year(1)
@@ -252,6 +270,14 @@ test = ((((((((dt + y) - m) + w) - d) + h) - mi) + s) - ms)
 @test !(Dates.Millisecond(-1) > Dates.Millisecond(1))
 @test Dates.Millisecond(1) == Dates.Millisecond(1)
 @test_throws MethodError Dates.Year(1) < Dates.Millisecond(1)
+@test Dates.Microsecond(-1) < Dates.Microsecond(1)
+@test !(Dates.Microsecond(-1) > Dates.Microsecond(1))
+@test Dates.Microsecond(1) == Dates.Microsecond(1)
+@test_throws MethodError Dates.Year(1) < Dates.Microsecond(1)
+@test Dates.Nanosecond(-1) < Dates.Nanosecond(1)
+@test !(Dates.Nanosecond(-1) > Dates.Nanosecond(1))
+@test Dates.Nanosecond(1) == Dates.Nanosecond(1)
+@test_throws MethodError Dates.Year(1) < Dates.Nanosecond(1)
 
 @test Dates.Year("1") == y
 @test Dates.Month("1") == m
@@ -261,6 +287,8 @@ test = ((((((((dt + y) - m) + w) - d) + h) - mi) + s) - ms)
 @test Dates.Minute("1") == mi
 @test Dates.Second("1") == s
 @test Dates.Millisecond("1") == ms
+@test Dates.Microsecond("1") == us
+@test Dates.Nanosecond("1") == ns
 @test_throws ArgumentError Dates.Year("1.0")
 @test Dates.Year(parse(Float64,"1.0")) == y
 
@@ -283,6 +311,8 @@ dt = Dates.DateTime(2014)
 @test Dates.default(Dates.Minute) == zero(Dates.Minute)
 @test Dates.default(Dates.Second) == zero(Dates.Second)
 @test Dates.default(Dates.Millisecond) == zero(Dates.Millisecond)
+@test Dates.default(Dates.Microsecond) == zero(Dates.Microsecond)
+@test Dates.default(Dates.Nanosecond) == zero(Dates.Nanosecond)
 
 # Conversions
 @test Dates.toms(ms) == Dates.value(Dates.Millisecond(ms)) == 1
@@ -291,6 +321,15 @@ dt = Dates.DateTime(2014)
 @test Dates.toms(h)  == Dates.value(Dates.Millisecond(h)) == 3600000
 @test Dates.toms(d)  == Dates.value(Dates.Millisecond(d)) == 86400000
 @test Dates.toms(w)  == Dates.value(Dates.Millisecond(w)) == 604800000
+
+@test Dates.tons(ns) == Dates.value(Dates.Nanosecond(ns)) == 1
+@test Dates.tons(us) == Dates.value(Dates.Nanosecond(us)) == 1000
+@test Dates.tons(ms) == Dates.value(Dates.Nanosecond(ms)) == 1000000
+@test Dates.tons(s)  == Dates.value(Dates.Nanosecond(s))  == 1000000000
+@test Dates.tons(mi) == Dates.value(Dates.Nanosecond(mi)) == Int64(60000000000)
+@test Dates.tons(h)  == Dates.value(Dates.Nanosecond(h))  == Int64(3600000000000)
+@test Dates.tons(d)  == Dates.value(Dates.Nanosecond(d))  == Int64(86400000000000)
+@test Dates.tons(w)  == Dates.value(Dates.Nanosecond(w))  == Int64(604800000000000)
 
 @test Dates.days(ms) == Dates.days(s) == Dates.days(mi) == Dates.days(h) == 0
 @test Dates.days(Dates.Millisecond(86400000)) == 1
@@ -380,3 +419,12 @@ cpa = [1y+1s 1m+1s 1w+1s 1d+1s; 1h+1s 1mi+1s 2m+1s 1s+1ms]
 
 @test [1y+1s 1m+1s; 1w+1s 1d+1s] + [1y+1h 1y+1mi; 1y+1s 1y+1ms] == [2y+1h+1s 1y+1m+1mi+1s; 1y+1w+2s 1y+1d+1s+1ms]
 @test [1y+1s 1m+1s; 1w+1s 1d+1s] - [1y+1h 1y+1mi; 1y+1s 1y+1ms] == [1s-1h 1m+1s-1y-1mi; 1w-1y 1d+1s-1y-1ms]
+
+t = Dates.Time(23,59,59,100,99,98)
+c = Dates.CompoundPeriod(t)
+@test c.periods[1] == Dates.Hour(23)
+@test c.periods[2] == Dates.Minute(59)
+@test c.periods[3] == Dates.Second(59)
+@test c.periods[4] == Dates.Millisecond(100)
+@test c.periods[5] == Dates.Microsecond(99)
+@test c.periods[6] == Dates.Nanosecond(98)

@@ -119,6 +119,33 @@ function test_dates2(from,to)
 end
 test_dates2(0,2100)
 
+# test hour, minute, second
+function test_times1()
+    h = mi = s = 0
+    for h = 0:23, mi = 0:59, s = 0:59
+        t = Dates.Time(h,mi,s)
+        @test h == Dates.hour(t)
+        @test mi == Dates.minute(t)
+        @test s == Dates.second(t)
+    end
+end
+test_times1()
+
+# test millisecond, microsecond, nanosecond
+function test_times2()
+    h = mi = s = 0
+    for h = [0,23], mi = [0,59], s = [0,59], ms in [0,1,500,999], us in [0,1,500,999], ns in [0,1,500,999]
+        t = Dates.Time(h,mi,s,ms,us,ns)
+        @test h == Dates.hour(t)
+        @test mi == Dates.minute(t)
+        @test s == Dates.second(t)
+        @test ms == Dates.millisecond(t)
+        @test us == Dates.microsecond(t)
+        @test ns == Dates.nanosecond(t)
+    end
+end
+test_times2()
+
 # week function
 # Tests from https://en.wikipedia.org/wiki/ISO_week_date
 @test Dates.week(Dates.Date(2005,1,1)) == 53
@@ -192,3 +219,12 @@ dr = [a,a,a,a,a,a,a,a,a,a]
 @test Dates.minute(dr) == repmat([0],10)
 @test Dates.second(dr) == repmat([0],10)
 @test Dates.millisecond(dr) == repmat([0],10)
+
+b = Dates.Time(1,2,3,4,5,6)
+tr = [b,b,b,b,b,b,b,b,b,b]
+@test Dates.hour(tr) == repmat([1],10)
+@test Dates.minute(tr) == repmat([2],10)
+@test Dates.second(tr) == repmat([3],10)
+@test Dates.millisecond(tr) == repmat([4],10)
+@test Dates.microsecond(tr) == repmat([5],10)
+@test Dates.nanosecond(tr) == repmat([6],10)

@@ -16,10 +16,12 @@ include("dates/io.jl")
 
 export Period, DatePeriod, TimePeriod,
        Year, Month, Week, Day, Hour, Minute, Second, Millisecond,
-       TimeZone, UTC, TimeType, DateTime, Date,
+       Microsecond, Nanosecond,
+       TimeZone, UTC, TimeType, DateTime, Date, Time,
        # accessors.jl
        yearmonthday, yearmonth, monthday, year, month, week, day,
        hour, minute, second, millisecond, dayofmonth,
+       microsecond, nanosecond,
        # query.jl
        dayofweek, isleapyear, daysinmonth, daysinyear, dayofyear, dayname, dayabbr,
        dayofweekofmonth, daysofweekinmonth, monthname, monthabbr,
