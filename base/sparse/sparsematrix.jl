@@ -3301,6 +3301,14 @@ end
     hash(val, h)
 end
 
+# Hash a sequence of zero entries, including the step before the first one
+@inline function hashzeros(val, runlength::Int, h::UInt)
+    runlength == 0 && return h
+    h = hash(zero(val)-val, h)
+    hashrun(zero(val), runlength-1, h)
+end
+
+# hashaa_seed and hashrle_seed are defined in abstractarray.jl
 function hash{T}(A::SparseMatrixCSC{T}, h::UInt)
     h += Base.hashaa_seed
     sz = size(A)
@@ -3311,26 +3319,32 @@ function hash{T}(A::SparseMatrixCSC{T}, h::UInt)
     nzval = A.nzval
     lastidx = 0
     runlength = 0
+    lastrunlength = 0
+    last = zero(T)
     lastnz = zero(T)
+    lastdiff = zero(T)
     @inbounds for col = 1:size(A, 2)
         for j = colptr[col]:colptr[col+1]-1
             nz = nzval[j]
             isequal(nz, zero(T)) && continue
             idx = sub2ind(sz, rowval[j], col)
-            if idx != lastidx+1 || !isequal(nz, lastnz)  # Run is over
-                h = hashrun(lastnz, runlength, h)        # Hash previous run
-                h = hashrun(0, idx-lastidx-1, h)         # Hash intervening zeros
-
+            idx != lastidx+1 && (last = 0) # There have been zeros since the previous value
+            diff = nz - last
+            if idx != lastidx+1 || !isequal(diff, lastdiff) # Run is over
+                h = hashrun(lastdiff, runlength, h)         # Hash previous run
+                h = hashzeros(lastnz, idx-lastidx-1, h)     # Hash intervening zeros
                 runlength = 1
-                lastnz = nz
             else
                 runlength += 1
             end
             lastidx = idx
+            last = nz
+            lastnz = nz
+            lastdiff = diff
         end
     end
-    h = hashrun(lastnz, runlength, h) # Hash previous run
-    hashrun(0, length(A)-lastidx, h)  # Hash zeros at end
+    h = hashrun(lastdiff, runlength, h)    # Hash previous run
+    hashzeros(last, length(A)-lastidx, h)  # Hash zeros at end
 end
 
 ## Statistics
