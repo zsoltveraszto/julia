@@ -23,6 +23,7 @@ for period in (:Year, :Month, :Week, :Day, :Hour, :Minute, :Second, :Millisecond
         @eval begin
             @doc """
                 $($period_str)(dt::$($typ_str)) -> $($period_str)
+
             The $($accessor_str) part of a $($description) as a `$($period_str)`.$($reference)
             """ ->
             $period(dt::$(Symbol(typ_str))) = $period($(Symbol(accessor_str))(dt))
@@ -31,6 +32,7 @@ for period in (:Year, :Month, :Week, :Day, :Hour, :Minute, :Second, :Millisecond
     @eval begin
         @doc """
             $($period_str)(v)
+
         Construct a `$($period_str)` object with the given `v` value. Input must be
         losslessly convertible to an `Int64`.
         """ $period(v)
@@ -52,6 +54,7 @@ Base.typemax{P<:Period}(::Type{P}) = P(typemax(Int64))
 # Default values (as used by TimeTypes)
 """
     default(p::Period) -> Period
+
 Returns a sensible "default" value for the input Period by returning `one(p)` for Year,
 Month, and Day, and `zero(p)` for Hour, Minute, Second, and Millisecond.
 """
@@ -159,6 +162,7 @@ coarserperiod(::Type{Month}) = (Year,12)
 # and convert more-precise periods to less-precise periods when possible
 """
     CompoundPeriod
+
 A `CompoundPeriod` is useful for expressing time periods that are not a fixed multiple of
 smaller periods. For example, \"a year and a  day\" is not a fixed number of days, but can
 be expressed using a `CompoundPeriod`. In fact, a `CompoundPeriod` is automatically
@@ -274,23 +278,30 @@ end
 
 """
     CompoundPeriod(periods) -> CompoundPeriod
+
 Construct a `CompoundPeriod` from a `Vector` of `Period`s. The constructor will
 automatically simplify the periods into a canonical form according to the following rules:
+
 * All `Period`s of the same type will be added together
 * Any `Period` large enough be partially representable by a coarser `Period` will be broken
   into multiple `Period`s (eg. `Hour(30)` becomes `Day(1) + Hour(6)`)
 * `Period`s with opposite signs will be combined when possible
   (eg. `Hour(1) - Day(1)` becomes `-Hour(23)`)
+
 Due to the canonicalization, `CompoundPeriod` is also useful for converting time periods
 into more human-comprehensible forms.
+
 # Examples
 ```julia
 julia> Dates.CompoundPeriod([Dates.Hour(12), Dates.Hour(13)])
 1 day, 1 hour
+
 julia> Dates.CompoundPeriod([Dates.Hour(-1), Dates.Minute(1)])
 -59 minutes
+
 julia> Dates.CompoundPeriod([Dates.Month(1), Dates.Week(-2)])
 1 month, -2 weeks
+
 julia> Dates.CompoundPeriod(Dates.Minute(50000)))
 4 weeks, 6 days, 17 hours, 20 minutes
 ```
