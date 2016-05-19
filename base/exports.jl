@@ -978,6 +978,7 @@ export
 
 # iteration
     done,
+    eachindexvalue,
     enumerate,
     next,
     start,

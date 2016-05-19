@@ -59,7 +59,9 @@ type.
 
    .. Docstring generated from Julia source
 
-   An iterator that yields ``(i, x)`` where ``i`` is an index starting at 1, and ``x`` is the ``i``\ th value from the given iterator. It's useful when you need not only the values ``x`` over which you are iterating, but also the index ``i`` of the iterations.
+   An iterator that yields ``(i, x)`` where ``i`` is a counter starting at 1, and ``x`` is the ``i``\ th value returned by the given iterator. When ``iter`` supports indexing starting at 1, these satisfy ``x = iter[i]``\ ; one advantage of ``enumerate`` is that the bounds-check for indexing can typically be omitted.
+
+   If you are iterating over an array, see also ``eachindexvalue``\ .
 
    .. doctest::
 
@@ -71,6 +73,36 @@ type.
        1 a
        2 b
        3 c
+
+.. function:: eachindexvalue(A)
+
+   .. Docstring generated from Julia source
+
+   An iterator that accesses each element of the array ``A``\ , returning ``(I, x)``\ , where ``I`` is the index for the element and ``x = A[I]``\ .  This is similar to ``enumerate``\ , except ``I`` will always be a valid index for ``A`` and generally the most efficient type of index, which is not necessarily an integer.  Like ``enumerate``\ , the bounds-check that would otherwise occur for ``A[I]`` is omitted.
+
+   .. doctest::
+
+       julia> A = ["a" "d"; "b" "e"; "c" "f"];
+
+       julia> for (index, value) in eachindexvalue(A)
+                  println("$index $value")
+              end
+       1 a
+       2 b
+       3 c
+       4 d
+       5 e
+       6 f
+
+       julia> S = slice(A, 1:2, :);
+
+       julia> for (index, value) in eachindexvalue(S)
+                  println("$index $value")
+              end
+       CartesianIndex{2}((1,1)) a
+       CartesianIndex{2}((2,1)) b
+       CartesianIndex{2}((1,2)) d
+       CartesianIndex{2}((2,2)) e
 
 .. function:: rest(iter, state)
 

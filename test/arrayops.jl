@@ -936,6 +936,13 @@ let a36 = boo32_64()
 end
 @test isequal([1,2,3], [a for (a,b) in enumerate(2:4)])
 @test isequal([2,3,4], [b for (a,b) in enumerate(2:4)])
+A14 = [11 13; 12 14]
+B14 = sub(A14, 1:2, 1:2)
+@test isa(Base.linearindexing(B14), Base.LinearSlow)
+@test isequal([1,2,3,4], [a for (a,b) in eachindexvalue(A14)])
+@test isequal(vec(collect(eachindex(B14))), [a for (a,b) in eachindexvalue(B14)])
+@test isequal([11,12,13,14], [b for (a,b) in eachindexvalue(A14)])
+@test isequal([11,12,13,14], [b for (a,b) in eachindexvalue(B14)])
 
 # comprehension in let-bound function
 let x⊙y = sum([x[i]*y[i] for i=1:length(x)])

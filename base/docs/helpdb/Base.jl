@@ -10370,27 +10370,6 @@ Remove a trailing newline from a string.
 chomp
 
 """
-    enumerate(iter)
-
-An iterator that yields `(i, x)` where `i` is an index starting at 1, and
-`x` is the `i`th value from the given iterator. It's useful when you need
-not only the values `x` over which you are iterating, but also the index `i`
-of the iterations.
-
-```jldoctest
-julia> a = ["a", "b", "c"];
-
-julia> for (index, value) in enumerate(a)
-           println("\$index \$value")
-       end
-1 a
-2 b
-3 c
-```
-"""
-enumerate
-
-"""
     >=(x, y)
     ≥(x,y)
 

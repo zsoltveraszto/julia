@@ -17,21 +17,104 @@ _diff_length(a, b, A, B) = max(length(a)-length(b), 0)
 immutable Enumerate{I}
     itr::I
 end
+
+"""
+    enumerate(iter)
+
+An iterator that yields `(i, x)` where `i` is a counter starting at 1,
+and `x` is the `i`th value returned by the given iterator. When `iter`
+supports indexing starting at 1, these satisfy `x = iter[i]`; one
+advantage of `enumerate` is that the bounds-check for indexing can
+typically be omitted.
+
+If you are iterating over an array, see also `eachindexvalue`.
+
+```jldoctest
+julia> a = ["a", "b", "c"];
+
+julia> for (index, value) in enumerate(a)
+           println("\$index \$value")
+       end
+1 a
+2 b
+3 c
+```
+"""
 enumerate(itr) = Enumerate(itr)
 
 length(e::Enumerate) = length(e.itr)
 size(e::Enumerate) = size(e.itr)
-start(e::Enumerate) = (1, start(e.itr))
-function next(e::Enumerate, state)
+@inline start(e::Enumerate) = (1, start(e.itr))
+@inline function next(e::Enumerate, state)
     n = next(e.itr,state[2])
     (state[1],n[1]), (state[1]+1,n[2])
 end
-done(e::Enumerate, state) = done(e.itr, state[2])
+@inline done(e::Enumerate, state) = done(e.itr, state[2])
 
 eltype{I}(::Type{Enumerate{I}}) = Tuple{Int, eltype(I)}
 
 iteratorsize{I}(::Type{Enumerate{I}}) = iteratorsize(I)
 iteratoreltype{I}(::Type{Enumerate{I}}) = iteratoreltype(I)
+
+# eachindexvalue
+# This is like enumerate, except rather than counting entries it
+# returns the index associated with each entry
+
+immutable IndexValue{I,A<:AbstractArray}
+    data::A
+    itr::I
+end
+
+"""
+    eachindexvalue(A)
+
+An iterator that accesses each element of the array `A`, returning
+`(I, x)`, where `I` is the index for the element and `x = A[I]`.  This
+is similar to `enumerate`, except `I` will always be a valid index for
+`A` and generally the most efficient type of index, which is not
+necessarily an integer.  Like `enumerate`, the bounds-check that would
+otherwise occur for `A[I]` is omitted.
+
+```jldoctest
+julia> A = ["a" "d"; "b" "e"; "c" "f"];
+
+julia> for (index, value) in eachindexvalue(A)
+           println("\$index \$value")
+       end
+1 a
+2 b
+3 c
+4 d
+5 e
+6 f
+
+julia> S = slice(A, 1:2, :);
+
+julia> for (index, value) in eachindexvalue(S)
+           println("\$index \$value")
+       end
+CartesianIndex{2}((1,1)) a
+CartesianIndex{2}((2,1)) b
+CartesianIndex{2}((1,2)) d
+CartesianIndex{2}((2,2)) e
+```
+"""
+eachindexvalue(A::AbstractArray) = IndexValue(A, eachindex(A))
+
+length(v::IndexValue) = length(v.itr)
+size(v::IndexValue) = size(v.itr)
+@inline start(v::IndexValue) = start(v.itr)
+@inline function next(v::IndexValue, state)
+    indx, n = next(v.itr, state)
+    @inbounds item = v.data[indx]
+    (indx, item), n
+end
+@inline done(v::IndexValue, state) = done(v.itr, state)
+
+eltype{I,A}(::Type{IndexValue{I,A}}) = Tuple{eltype(I), eltype(A)}
+
+iteratorsize{I}(::Type{IndexValue{I}}) = iteratorsize(I)
+iteratoreltype{I}(::Type{IndexValue{I}}) = iteratoreltype(I)
 
 # zip
 
