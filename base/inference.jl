@@ -2195,7 +2195,7 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
     if isa(e,Symbol)
         return allow_volatile
     end
-    if isa(e,Number) || isa(e,AbstractString) || isa(e,SSAValue) ||
+    if isa(e,Number) || isa(e,AbstractString) || isa(e,SSAValue) || isa(e,Module) ||
         isa(e,QuoteNode) || isa(e,Type) || isa(e,Tuple)
         return true
     end
@@ -2218,6 +2218,9 @@ function effect_free(e::ANY, sv, allow_volatile::Bool)
                     if is_known_call(e, arrayref, sv) || is_known_call(e, arraylen, sv)
                         return false
                     elseif is_known_call(e, getfield, sv)
+                        if isType(e.typ) && isleaftype(e.typ)
+                            return true
+                        end
                         # arguments must be immutable to ensure e is affect_free
                         first = true
                         for a in ea
