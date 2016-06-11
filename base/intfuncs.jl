@@ -284,20 +284,24 @@ num2hex(n::Integer) = hex(n, sizeof(n)*2)
 const base36digits = ['0':'9';'a':'z']
 const base62digits = ['0':'9';'A':'Z';'a':'z']
 
-function base(b::Int, x::Unsigned, pad::Int, neg::Bool)
-    2 <= b <= 62 || throw(ArgumentError("base must be 2 ≤ base ≤ 62, got $b"))
+function base(b::Int, x::Integer, pad::Int, neg::Bool)
+    x >= 0 || throw(DomainError())
+    2 <= abs(b) <= 62 || throw(ArgumentError("base must be 2 ≤ base ≤ 62, got $b"))
     digits = b <= 36 ? base36digits : base62digits
     i = neg + max(pad,ndigits0z(x,b))
     a = Array{UInt8}(i)
+    D, R = b > 0 ?
+        (div, rem) :
+        (cld, (n, base) -> mod(n, -base))
     while i > neg
-        a[i] = digits[1+rem(x,b)]
-        x = div(x,b)
+        a[i] = digits[1+R(x,b)]
+        x = D(x,b)
         i -= 1
     end
     if neg; a[1]='-'; end
     String(a)
 end
-base(b::Integer, n::Integer, pad::Integer=1) = base(Int(b), unsigned(abs(n)), pad, n<0)
+base(b::Integer, n::Integer, pad::Integer=1) = base(Int(b), b > 0 ? unsigned(abs(n)) : n, pad, b>0 && n<0)
 
 for sym in (:bin, :oct, :dec, :hex)
     @eval begin
@@ -324,7 +328,7 @@ function digits{T<:Integer}(::Type{T}, n::Integer, base::Integer=10, pad::Intege
 end
 
 function digits!{T<:Integer}(a::AbstractArray{T,1}, n::Integer, base::Integer=10)
-    2 <= base || throw(ArgumentError("base must be ≥ 2, got $base"))
+    2 <= abs(base) || throw(ArgumentError("base must be ≥ 2 or ≤ -2, got $base"))
     !applicable(typemax, T) ||
         base - 1 <= typemax(T) || throw(ArgumentError("type $T too small for base $base"))
     D, R = base > 0 ?
