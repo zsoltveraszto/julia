@@ -592,11 +592,15 @@ As ``BigInt`` represents unbounded integers, the interval must be specified (e.g
 
    Fill the array ``A`` with random numbers following the exponential distribution (with scale 1).
 
-.. function:: randjump(r::MersenneTwister, jumps, [jumppoly]) -> Vector{MersenneTwister}
+.. function:: randjump(r::MersenneTwister, jumps, steps=10^20) -> Vector{MersenneTwister}
 
    .. Docstring generated from Julia source
 
-   Create an array of the size ``jumps`` of initialized ``MersenneTwister`` RNG objects where the first RNG object given as a parameter and following ``MersenneTwister`` RNGs in the array initialized such that a state of the RNG object in the array would be moved forward (without generating numbers) from a previous RNG object array element on a particular number of steps encoded by the jump polynomial ``jumppoly``\ .
+   Create an array of size ``jumps`` of initialized ``MersenneTwister`` RNG objects corresponding to different substreams of ``r``\ , using the "jump-ahead" method. The first element of this array is the RNG ``r`` given as a parameter; each other RNG element is initialized to the previous element's state moved forward by ``steps`` steps (one such "step" corresponds to the generation of two ``Float64`` numbers, but no numbers are actually generated). This allows obtaining multiple streams of random numbers from one initial state, while still benefiting from strong statistical properties (provided of course that the substreams don't overlap).
 
-   Default jump polynomial moves forward ``MersenneTwister`` RNG state by 10^20 steps.
+.. function:: randjump(r::MersenneTwister, jumps, jumppoly::AbstractString) -> Vector{MersenneTwister}
+
+   .. Docstring generated from Julia source
+
+   Similar to ``randjump(r, jumps, steps)`` where the number of steps is determined by a jump polynomial ``jumppoly`` with coefficients in :math:`GF(2)` (the field with two elements) encoded as an hexadecimal string.
 
