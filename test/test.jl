@@ -122,15 +122,16 @@ try
             @test S(1) == T(1)
         end
     end
-    srand(123)
-    @testset "some loops fail" begin
-        @testset for i in 1:5
-            @test i <= rand(1:10)
-        end
-        # should add 3 errors and 3 passing tests
-        @testset for i in 1:6
-            iseven(i) || error("error outside of test")
-            @test true # only gets run if the above passed
+    srand(123) do
+        @testset "some loops fail" begin
+            @testset for i in 1:5
+                @test i <= rand(1:10)
+            end
+            # should add 3 errors and 3 passing tests
+            @testset for i in 1:6
+                iseven(i) || error("error outside of test")
+                @test true # only gets run if the above passed
+            end
         end
     end
 end

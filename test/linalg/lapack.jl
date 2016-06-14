@@ -8,8 +8,7 @@ import Base.LinAlg.BlasInt
 @test_throws ArgumentError Base.LinAlg.LAPACK.chkdiag('Z')
 @test_throws ArgumentError Base.LinAlg.LAPACK.chktrans('Z')
 
-let # syevr
-    srand(123)
+srand(123) do # syevr
     Ainit = randn(5,5)
     for elty in (Float32, Float64, Complex64, Complex128)
         if elty == Complex64 || elty == Complex128

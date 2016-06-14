@@ -5,8 +5,7 @@ using Base.Test
 debug = false
 
 debug && println("eigs")
-let
-    srand(1234)
+srand(1234) do
     local n,a,asym,b,bsym,d,v
     n = 10
     areal  = sprandn(n,n,0.4)

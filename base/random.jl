@@ -195,6 +195,24 @@ srand(r::MersenneTwister) = srand(r, make_seed())
 srand(r::MersenneTwister, n::Integer) = srand(r, make_seed(n))
 srand(r::MersenneTwister, filename::AbstractString, n::Integer=4) = srand(r, make_seed(filename, n))
 
+## guarded srand()
+
+function guardsrand(f, r::MersenneTwister=GLOBAL_RNG)
+    old = copy(r)
+    res = f()
+    copy!(r, old)
+    res
+end
+
+srand(f, r::MersenneTwister, seed, etc...) = guardsrand(r) do
+    srand(r, seed, etc...)
+    f()
+end
+
+## global srand
+
+srand(f, seed::Union{Integer, Vector{UInt32}, AbstractString}, etc...) =
+    srand(f, GLOBAL_RNG, seed, etc...)
 
 function dsfmt_gv_srand()
     # Temporary fix for #8874 and #9124: update global RNG for Rmath
