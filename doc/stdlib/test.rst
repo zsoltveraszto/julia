@@ -12,11 +12,11 @@ binary install, you can run the test suite using ``Base.runtests()``.
 
 .. currentmodule:: Base
 
-.. function:: runtests([tests=["all"] [, numcores=ceil(Integer, Sys.CPU_CORES / 2) ]])
+.. function:: runtests([tests=["all"] [, numcores=ceil(Integer, Sys.CPU_CORES / 2) ]]; seed)
 
    .. Docstring generated from Julia source
 
-   Run the Julia unit tests listed in ``tests``\ , which can be either a string or an array of strings, using ``numcores`` processors. (not exported)
+   Run the Julia unit tests listed in ``tests``\ , which can be either a string or an array of strings, using ``numcores`` processors. If a seed is provided via the keyword argument, it is used to seed the global RNG in the context where the tests are run. (not exported)
 
 .. module:: Base.Test
 

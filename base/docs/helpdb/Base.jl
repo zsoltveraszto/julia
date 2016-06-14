@@ -9251,14 +9251,6 @@ Matrix trace.
 trace
 
 """
-    runtests([tests=["all"] [, numcores=ceil(Integer, Sys.CPU_CORES / 2) ]])
-
-Run the Julia unit tests listed in `tests`, which can be either a string or an array of
-strings, using `numcores` processors. (not exported)
-"""
-runtests
-
-"""
     time_ns()
 
 Get the time in nanoseconds. The time corresponding to 0 is undefined, and wraps every 5.8 years.

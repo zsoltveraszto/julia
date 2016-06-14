@@ -1,7 +1,7 @@
 # This file is a part of Julia. License is MIT: http://julialang.org/license
 
 include("choosetests.jl")
-tests, net_on = choosetests(ARGS)
+tests, net_on, seed = choosetests(ARGS)
 tests = unique(tests)
 
 const max_worker_rss = if haskey(ENV, "JULIA_TEST_MAXRSS_MB")
@@ -41,7 +41,7 @@ cd(dirname(@__FILE__)) do
                     test = shift!(tests)
                     local resp
                     try
-                        resp = remotecall_fetch(t -> runtests(t), p, test)
+                        resp = remotecall_fetch(t -> runtests(t, seed), p, test)
                     catch e
                         resp = e
                     end
@@ -53,8 +53,8 @@ cd(dirname(@__FILE__)) do
                             p = addprocs(1; exeflags=`--check-bounds=yes --depwarn=error`)[1]
                             remotecall_fetch(()->include("testdefs.jl"), p)
                         else
-                            # single process testing, bail if mem limit reached, or, on an exception.
-                            isa(resp, Exception) ? rethrow(resp) : error("Halting tests. Memory limit reached : $resp > $max_worker_rss")
+                            # single process testing, bail if mem limit reached.
+                            isa(resp, Exception) || error("Halting tests. Memory limit reached : $resp > $max_worker_rss")
                         end
                     end
                 end
@@ -66,6 +66,7 @@ cd(dirname(@__FILE__)) do
     if length(errors) > 0
         for err in errors
             println("Exception running test $(err[1]) :")
+            println("(The global RNG seed was 0x$(hex(seed)))")
             showerror(STDERR, err[2])
             println()
         end
@@ -76,8 +77,13 @@ cd(dirname(@__FILE__)) do
     n > 1 && rmprocs(workers(), waitfor=5.0)
 
     for t in node1_tests
-        n > 1 && print("\tFrom worker 1:\t")
-        runtests(t)
+        n > 1 && print("\tFrom worker 1 :\t")
+        try
+            runtests(t, seed)
+        catch e
+            println("(The global RNG seed was 0x$(hex(seed)))")
+            rethrow(e)
+        end
     end
 
     println("    \033[32;1mSUCCESS\033[0m")

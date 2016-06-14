@@ -513,10 +513,21 @@ end
 
 # testing
 
-function runtests(tests = ["all"], numcores = ceil(Int, Sys.CPU_CORES / 2))
+
+"""
+    runtests([tests=["all"] [, numcores=ceil(Integer, Sys.CPU_CORES / 2) ]]; seed)
+
+Run the Julia unit tests listed in `tests`, which can be either a
+string or an array of strings, using `numcores` processors. If a seed
+is provided via the keyword argument, it is used to seed the global
+RNG in the context where the tests are run. (not exported)
+"""
+function runtests(tests = ["all"], numcores = ceil(Int, Sys.CPU_CORES / 2);
+                  seed::BitInteger=rand(RandomDevice(), UInt128))
     if isa(tests,AbstractString)
         tests = split(tests)
     end
+    push!(tests, "--seed=$(seed % UInt128)") # cast to UInt128 to avoid a minus sign
     ENV2 = copy(ENV)
     ENV2["JULIA_CPU_CORES"] = "$numcores"
     try

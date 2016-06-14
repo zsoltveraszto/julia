@@ -2,13 +2,19 @@
 
 @doc """
 
-`tests, net_on = choosetests(choices)` selects a set of tests to be
+`tests, net_on, seed = choosetests(choices)` selects a set of tests to be
 run. `choices` should be a vector of test names; if empty or set to
 `["all"]`, all tests are selected.
 
 This function also supports "test collections": specifically, "linalg"
  refers to collections of tests in the correspondingly-named
 directories.
+
+If `choices` contains an element of the form `"--seed=SEED"`, then the
+return value `seed` will be equal to `SEED` (parsed as an `UInt128`);
+`seed` is otherwise initialized randomly. All the tests will be run in
+a context where the global RNG is initialized with this seed. This can
+be used to reproduce failed tests.
 
 Upon return, `tests` is a vector of fully-expanded test names, and
 `net_on` is true if networking is available (required for some tests).
@@ -46,11 +52,14 @@ function choosetests(choices = [])
 
     tests = []
     skip_tests = []
+    seed = rand(RandomDevice(), UInt128)
 
     for (i, t) in enumerate(choices)
         if t == "--skip"
             skip_tests = choices[i + 1:end]
             break
+        elseif startswith(t, "--seed=")
+            seed = parse(UInt128, t[8:end])
         else
             push!(tests, t)
         end
@@ -100,5 +109,5 @@ function choosetests(choices = [])
 
     filter!(x -> !(x in skip_tests), tests)
 
-    tests, net_on
+    tests, net_on, seed
 end
