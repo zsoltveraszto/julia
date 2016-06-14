@@ -106,6 +106,15 @@ end
 @test digits(4, 2) == [0, 0, 1]
 @test digits(5, 3) == [2, 1]
 
+# digits with negative bases (examples taken from
+# https://en.wikipedia.org/wiki/Negative_base
+@test digits(8163, -10) == [3, 4, 2, 2, 1]
+@test digits(-8163, -10) == [7, 7, 9, 9]
+let wikiexamples =
+for d=-15:17
+
+
+
 @test leading_ones(UInt32(Int64(2) ^ 32 - 2)) == 31
 @test leading_ones(1) == 0
 @test leading_zeros(Int32(1)) == 31
