@@ -47,6 +47,8 @@ type Prompt <: TextInterface
     on_enter
     on_done
     on_ready
+    on_transition_start
+    on_transition_stop
     hist
     sticky::Bool
 end
@@ -1545,6 +1547,9 @@ function transition(f::Function, s::MIState, mode)
     if !haskey(s.mode_state,mode)
         s.mode_state[mode] = init_state(terminal(s), mode)
     end
+    if isdefined(s.mode_state[mode], :p) && isdefined(s.mode_state[mode].p, :on_transition_start)
+        s.mode_state[mode].p.on_transition_start(s)
+    end
     termbuf = TerminalBuffer(IOBuffer())
     t = terminal(s)
     s.mode_state[s.current_mode] = deactivate(s.current_mode, s.mode_state[s.current_mode], termbuf, t)
@@ -1552,6 +1557,9 @@ function transition(f::Function, s::MIState, mode)
     f()
     activate(mode, s.mode_state[mode], termbuf, t)
     commit_changes(t, termbuf)
+    if isdefined(s.mode_state[mode], :p) && isdefined(s.mode_state[mode].p, :on_transition_stop)
+        s.mode_state[mode].p.on_transition_stop(s)
+    end
 end
 transition(s::MIState, mode) = transition((args...)->nothing, s, mode)
 
@@ -1581,11 +1589,13 @@ function Prompt(prompt;
     on_enter = default_enter_cb,
     on_done = ()->nothing,
     on_ready = (state)->nothing,
+    on_transition_start = (state)->nothing,
+    on_transition_stop = (state)->nothing,
     hist = EmptyHistoryProvider(),
     sticky = false)
 
     Prompt(prompt, first_prompt, prompt_prefix, prompt_suffix, keymap_dict, keymap_func_data,
-        complete, on_enter, on_done, on_ready, hist, sticky)
+        complete, on_enter, on_done, on_ready, on_transition_start, on_transition_stop, hist, sticky)
 end
 
 run_interface(::Prompt) = nothing
