@@ -285,7 +285,7 @@ const base36digits = ['0':'9';'a':'z']
 const base62digits = ['0':'9';'A':'Z';'a':'z']
 
 function base(b::Int, x::Integer, pad::Int, neg::Bool, DivRem)
-    x >= 0 || throw(DomainError())
+    (x >= 0) | (b < 0) || throw(DomainError())
     2 <= abs(b) <= 62 || throw(ArgumentError("base must be 2 ≤ base ≤ 62, got $b"))
     digits = b <= 36 ? base36digits : base62digits
     i = neg + max(pad,ndigits0z(x,b))
@@ -300,8 +300,7 @@ function base(b::Int, x::Integer, pad::Int, neg::Bool, DivRem)
     String(a)
 end
 
-_choose_divrem(b) = b > 0 ? (div, rem) : (cld, (n, base) -> mod(n, -base)))
-
+_choose_divrem(base) = base > 0 ? (div, rem) : (cld, (n, base) -> mod(n, -base))
 
 base(b::Integer, n::Integer, pad::Integer=1) =
     base(Int(b), b > 0 ? unsigned(abs(n)) : n, pad, (b>0) & (n<0), _choose_divrem(b))
@@ -327,17 +326,17 @@ bits(x::Union{Int128,UInt128})            = bin(reinterpret(UInt128,x),128)
 digits{T<:Integer}(n::Integer, base::T=10, pad::Integer=1) = digits(T, n, base, pad)
 
 function digits{T<:Integer}(::Type{T}, n::Integer, base::Integer=10, pad::Integer=1)
-    2 <= base || throw(ArgumentError("base must be ≥ 2, got $base"))
+    2 <= abs(base) || throw(ArgumentError("base must be ≥ 2 or ≤ -2, got $base"))
     digits!(zeros(T, max(pad, ndigits0z(n,base))), n, base)
 end
 
-function digits!{T<:Integer}(a::AbstractArray{T,1}, n::Integer, base::Integer=10)
+digits!{T<:Integer}(a::AbstractArray{T,1}, n::Integer, base::Integer=10) =
+    digits!(a, n, base, _choose_divrem(base))
+
+function digits!{T<:Integer}(a::AbstractArray{T,1}, n::Integer, base::Integer, DivRem)
     2 <= abs(base) || throw(ArgumentError("base must be ≥ 2 or ≤ -2, got $base"))
-    !applicable(typemax, T) ||
-        base - 1 <= typemax(T) || throw(ArgumentError("type $T too small for base $base"))
-    D, R = base > 0 ?
-        (div, rem) :
-        (cld, (n, base) -> mod(n, -base))
+    base - 1 <= typemax(T) || throw(ArgumentError("type $T too small for base $base"))
+    D, R = DivRem
     for i in eachindex(a)
         a[i] = R(n, base)
         n = D(n, base)
