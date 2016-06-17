@@ -71,7 +71,7 @@ type MersenneTwister <: AbstractRNG
 
     MersenneTwister(state::DSFMT_state, seed) = new(state, Array{Float64}(MTCacheLength), MTCacheLength, seed)
     MersenneTwister(seed) = srand(new(DSFMT_state(), Array{Float64}(MTCacheLength)), seed)
-    MersenneTwister() = MersenneTwister(0)
+    MersenneTwister() = MersenneTwister(make_seed())
 end
 
 ## Low level API for MersenneTwister
