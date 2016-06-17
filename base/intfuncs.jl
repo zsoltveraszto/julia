@@ -284,15 +284,13 @@ num2hex(n::Integer) = hex(n, sizeof(n)*2)
 const base36digits = ['0':'9';'a':'z']
 const base62digits = ['0':'9';'A':'Z';'a':'z']
 
-function base(b::Int, x::Integer, pad::Int, neg::Bool)
+function base(b::Int, x::Integer, pad::Int, neg::Bool, DivRem)
     x >= 0 || throw(DomainError())
     2 <= abs(b) <= 62 || throw(ArgumentError("base must be 2 ≤ base ≤ 62, got $b"))
     digits = b <= 36 ? base36digits : base62digits
     i = neg + max(pad,ndigits0z(x,b))
     a = Array{UInt8}(i)
-    D, R = b > 0 ?
-        (div, rem) :
-        (cld, (n, base) -> mod(n, -base))
+    D, R = DivRem
     while i > neg
         a[i] = digits[1+R(x,b)]
         x = D(x,b)
@@ -301,7 +299,13 @@ function base(b::Int, x::Integer, pad::Int, neg::Bool)
     if neg; a[1]='-'; end
     String(a)
 end
-base(b::Integer, n::Integer, pad::Integer=1) = base(Int(b), b > 0 ? unsigned(abs(n)) : n, pad, b>0 && n<0)
+
+_choose_divrem(b) = b > 0 ? (div, rem) : (cld, (n, base) -> mod(n, -base)))
+
+
+base(b::Integer, n::Integer, pad::Integer=1) =
+    base(Int(b), b > 0 ? unsigned(abs(n)) : n, pad, (b>0) & (n<0), _choose_divrem(b))
+
 
 for sym in (:bin, :oct, :dec, :hex)
     @eval begin
