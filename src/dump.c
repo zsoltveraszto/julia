@@ -843,6 +843,8 @@ static void jl_serialize_value_(ios_t *s, jl_value_t *v)
         write_int8(s, m->isstaged);
         jl_serialize_value(s, (jl_value_t*)m->file);
         write_int32(s, m->line);
+        write_int32(s, m->min_world);
+        write_int32(s, m->max_world);
         jl_serialize_value(s, (jl_value_t*)m->sig);
         jl_serialize_value(s, (jl_value_t*)m->tvars);
         if (mode != MODE_MODULE_POSTWORK)
@@ -1114,8 +1116,11 @@ static void jl_serialize_dependency_list(ios_t *s)
     static jl_value_t *unique_func = NULL;
     if (!unique_func)
         unique_func = jl_get_global(jl_base_module, jl_symbol("unique"));
-    jl_value_t *uniqargs[2] = {unique_func,(jl_value_t*)deps};
+    jl_value_t *uniqargs[2] = {unique_func, (jl_value_t*)deps};
+    size_t last_age = jl_get_ptls_states()->world_age;
+    jl_get_ptls_states()->world_age = jl_world_counter;
     jl_array_t *udeps = deps && unique_func ? (jl_array_t*)jl_apply(uniqargs, 2) : NULL;
+    jl_get_ptls_states()->world_age = last_age;
 
     JL_GC_PUSH1(&udeps);
     if (udeps) {
@@ -1447,6 +1452,8 @@ static jl_value_t *jl_deserialize_value_(ios_t *s, jl_value_t *vtag, jl_value_t 
         m->isstaged = read_int8(s);
         m->file = (jl_sym_t*)jl_deserialize_value(s, NULL);
         m->line = read_int32(s);
+        m->min_world = read_int32(s);
+        m->max_world = read_int32(s);
         m->sig = (jl_tupletype_t*)jl_deserialize_value(s, (jl_value_t**)&m->sig);
         jl_gc_wb(m, m->sig);
         m->tvars = (jl_svec_t*)jl_deserialize_value(s, (jl_value_t**)&m->tvars);
@@ -1931,6 +1938,7 @@ static void jl_save_system_image_to_stream(ios_t *f)
 
     write_int32(f, jl_get_t_uid_ctr());
     write_int32(f, jl_get_gs_ctr());
+    write_int32(f, jl_world_counter);
     jl_finalize_serializer(f); // done with f
 
     htable_reset(&backref_table, 0);
@@ -2033,6 +2041,7 @@ static void jl_restore_system_image_from_stream(ios_t *f)
 
     int uid_ctr = read_int32(f);
     int gs_ctr = read_int32(f);
+    jl_world_counter = read_int32(f);
     jl_module_init_order = jl_finalize_deserializer(f, NULL); // done with f
 
     jl_set_t_uid_ctr(uid_ctr);
