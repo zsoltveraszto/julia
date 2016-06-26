@@ -126,8 +126,11 @@ end
 function sparse_compute_reshaped_colptr_and_rowval{Ti}(colptrS::Vector{Ti}, rowvalS::Vector{Ti}, mS::Int, nS::Int, colptrA::Vector{Ti}, rowvalA::Vector{Ti}, mA::Int, nA::Int)
     lrowvalA = length(rowvalA)
     maxrowvalA = (lrowvalA > 0) ? maximum(rowvalA) : zero(Ti)
-    ((length(colptrA) == (nA+1)) && (maximum(colptrA) <= (lrowvalA+1)) && (maxrowvalA <= mA)) || throw(BoundsError())
-
+    if length(colptrA) != (nA+1) || maximum(colptrA) > lrowvalA+1
+        Base.throw_boundsError(A,colptrA)
+    elseif maxrowvalA > mA
+        Base.throw_boundsError(A,maxrowvalA)
+    end
     colptrS[1] = 1
     colA = 1
     colS = 1
@@ -2235,7 +2238,7 @@ function setindex!{T,Ti}(A::SparseMatrixCSC{T,Ti}, v, i0::Integer, i1::Integer)
     i0 = convert(Ti, i0)
     i1 = convert(Ti, i1)
     if !(1 <= i0 <= A.m && 1 <= i1 <= A.n)
-        throw(BoundsError())
+        Base.throw_boundserror(A, (i0, i1))
     end
     v = convert(T, v)
     r1 = Int(A.colptr[i1])
@@ -2290,7 +2293,7 @@ function spset!{Tv,Ti<:Integer}(A::SparseMatrixCSC{Tv}, x::Tv, I::AbstractVector
     lenI = length(I)
 
     if (!isempty(I) && (I[1] < 1 || I[end] > m)) || (!isempty(J) && (J[1] < 1 || J[end] > n))
-        throw(BoundsError(A, (I, J)))
+        Base.throw_boundserror(A, (I, J))
     end
 
     if isempty(I) || isempty(J)
@@ -2407,7 +2410,7 @@ function spdelete!{Tv,Ti<:Integer}(A::SparseMatrixCSC{Tv}, I::AbstractVector{Ti}
     !issorted(J) && (J = sort(J))
 
     if (!isempty(I) && (I[1] < 1 || I[end] > m)) || (!isempty(J) && (J[1] < 1 || J[end] > n))
-        throw(BoundsError(A, (I, J)))
+        Base.throw_boundserror(A, (I, J))
     end
 
     if isempty(I) || isempty(J)
@@ -2492,7 +2495,7 @@ function setindex!{Tv,Ti,T<:Integer}(A::SparseMatrixCSC{Tv,Ti}, B::SparseMatrixC
     mB, nB = size(B)
 
     if (!isempty(I) && (I[1] < 1 || I[end] > m)) || (!isempty(J) && (J[1] < 1 || J[end] > n))
-        throw(BoundsError(A, (I, J)))
+        Base.throw_boundserror(A, (I, J))
     end
 
     if isempty(I) || isempty(J)
