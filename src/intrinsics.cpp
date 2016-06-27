@@ -427,7 +427,7 @@ static jl_cgval_t generic_box(jl_value_t *targ, jl_value_t *x, jl_codectx_t *ctx
     if (jl_is_type_type(bt_value.typ))
         bt = jl_tparam0(bt_value.typ);
 
-    if (!bt || !jl_is_bitstype(bt)) {
+    if (!bt || !jl_isbits(bt)) {
         // it's easier to throw a good error from C than llvm
         Value *arg1 = boxed(bt_value, ctx);
         Value *arg2 = boxed(v, ctx);
@@ -452,7 +452,7 @@ static jl_cgval_t generic_box(jl_value_t *targ, jl_value_t *x, jl_codectx_t *ctx
         || !jl_is_bitstype(v.typ)
         || jl_datatype_size(v.typ) != nb) {
         Value *typ = emit_typeof_boxed(v, ctx);
-        if (!jl_is_bitstype(v.typ)) {
+        if (!jl_isbits(v.typ)) {
             if (isboxed) {
                 Value *isbits = emit_datatype_isbitstype(typ);
                 error_unless(isbits, "reinterpret: expected bitstype value for second argument", ctx);
@@ -904,7 +904,7 @@ struct math_builder {
 };
 
 static Value *emit_untyped_intrinsic(intrinsic f, Value *x, Value *y, Value *z, size_t nargs,
-                                     jl_codectx_t *ctx, jl_datatype_t **newtyp);
+                                     jl_codectx_t *ctx, jl_datatype_t **newtyp, jl_value_t* xtyp);
 static jl_cgval_t emit_intrinsic(intrinsic f, jl_value_t **args, size_t nargs,
                                  jl_codectx_t *ctx)
 {
@@ -1127,7 +1127,7 @@ static jl_cgval_t emit_intrinsic(intrinsic f, jl_value_t **args, size_t nargs,
         }
         jl_value_t *newtyp = NULL;
         // TODO: compare the type validity of x,y,z before emitting the intrinsic
-        Value *r = emit_untyped_intrinsic(f, x, y, z, nargs, ctx, (jl_datatype_t**)&newtyp);
+        Value *r = emit_untyped_intrinsic(f, x, y, z, nargs, ctx, (jl_datatype_t**)&newtyp, xinfo.typ);
         if (!newtyp && r->getType() != x->getType())
             // cast back to the exact original type (e.g. float vs. int) before remarking as a julia type
             r = builder.CreateBitCast(r, x->getType());
@@ -1139,7 +1139,7 @@ static jl_cgval_t emit_intrinsic(intrinsic f, jl_value_t **args, size_t nargs,
 }
 
 static Value *emit_untyped_intrinsic(intrinsic f, Value *x, Value *y, Value *z, size_t nargs,
-                                       jl_codectx_t *ctx, jl_datatype_t **newtyp)
+				     jl_codectx_t *ctx, jl_datatype_t **newtyp, jl_value_t* xtyp)
 {
     Type *t = x->getType();
     Value *fy;
@@ -1245,9 +1245,21 @@ static Value *emit_untyped_intrinsic(intrinsic f, Value *x, Value *y, Value *z, 
 #else
         Value *res = builder.CreateCall2(intr, ix, iy);
 #endif
+        Value *val = builder.CreateExtractValue(res, ArrayRef<unsigned>(0));
         Value *obit = builder.CreateExtractValue(res, ArrayRef<unsigned>(1));
-        raise_exception_if(obit, prepare_global(jlovferr_var), ctx);
-        return builder.CreateExtractValue(res, ArrayRef<unsigned>(0));
+	Value *obyte = builder.CreateZExt(obit, T_int8);
+
+	jl_value_t *params[2];
+	params[0] = xtyp;
+	params[1] = (jl_value_t*)jl_bool_type;
+	jl_datatype_t *tuptyp = jl_apply_tuple_type_v(params,2);
+	*newtyp = tuptyp;
+
+	Value *tupval;
+	tupval = UndefValue::get(julia_type_to_llvm((jl_value_t*)tuptyp));
+	tupval = builder.CreateInsertValue(tupval, val, ArrayRef<unsigned>(0));
+	tupval = builder.CreateInsertValue(tupval, obyte, ArrayRef<unsigned>(1));
+	return tupval;
     }
 
     case checked_sdiv_int:

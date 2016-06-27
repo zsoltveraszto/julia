@@ -135,6 +135,14 @@ function checked_abs(x::SignedInt)
  end
 checked_abs(x::UnsignedInt) = x
 
+function xchecked_add{T<:SignedInt}(x::T, y::T)
+    checked_sadd_int(x, y)
+end
+function xchecked_add{T<:UnsignedInt}(x::T, y::T)
+    checked_uadd_int(x, y)
+end
+
+
 """
     Base.checked_add(x, y)
 
@@ -142,14 +150,17 @@ Calculates `x+y`, checking for overflow errors where applicable.
 
 The overflow protection may impose a perceptible performance penalty.
 """
-function checked_add end
-
 function checked_add{T<:SignedInt}(x::T, y::T)
-    box(T, checked_sadd_int(unbox(T,x), unbox(T,y)))
+    z, b = xchecked_add(x, y)
+    b && throw(OverflowError())
+    z
 end
 function checked_add{T<:UnsignedInt}(x::T, y::T)
-    box(T, checked_uadd_int(unbox(T,x), unbox(T,y)))
+    z, b = xchecked_add(x, y)
+    b && throw(OverflowError())
+    z
 end
+
 if BrokenSignedInt != Union{}
 function checked_add{T<:BrokenSignedInt}(x::T, y::T)
     r = x + y
@@ -184,6 +195,14 @@ checked_add{T}(x1::T, x2::T, x3::T, x4::T, x5::T, x6::T, x7::T) =
 checked_add{T}(x1::T, x2::T, x3::T, x4::T, x5::T, x6::T, x7::T, x8::T) =
     checked_add(checked_add(x1, x2), x3, x4, x5, x6, x7, x8)
 
+function xchecked_sub{T<:SignedInt}(x::T, y::T)
+    checked_ssub_int(x, y)
+end
+function xchecked_sub{T<:UnsignedInt}(x::T, y::T)
+    checked_usub_int(x, y)
+end
+
+
 """
     Base.checked_sub(x, y)
 
@@ -191,14 +210,17 @@ Calculates `x-y`, checking for overflow errors where applicable.
 
 The overflow protection may impose a perceptible performance penalty.
 """
-function checked_sub end
-
 function checked_sub{T<:SignedInt}(x::T, y::T)
-    box(T, checked_ssub_int(unbox(T,x), unbox(T,y)))
+    z, b = xchecked_sub(x, y)
+    b && throw(OverflowError())
+    z
 end
 function checked_sub{T<:UnsignedInt}(x::T, y::T)
-    box(T, checked_usub_int(unbox(T,x), unbox(T,y)))
+    z, b = xchecked_sub(x, y)
+    b && throw(OverflowError())
+    z
 end
+
 if BrokenSignedInt != Union{}
 function checked_sub{T<:BrokenSignedInt}(x::T, y::T)
     r = x - y
@@ -217,6 +239,14 @@ end
 checked_sub(x::Bool, y::Bool) = x - y
 checked_sub(x::Bool) = -x
 
+
+function xchecked_mul{T<:SignedInt}(x::T, y::T)
+    checked_smul_int(x, y)
+end
+function xchecked_mul{T<:UnsignedInt}(x::T, y::T)
+    checked_umul_int(x, y)
+end
+
 """
     Base.checked_mul(x, y)
 
@@ -224,14 +254,17 @@ Calculates `x*y`, checking for overflow errors where applicable.
 
 The overflow protection may impose a perceptible performance penalty.
 """
-function checked_mul end
-
 function checked_mul{T<:SignedInt}(x::T, y::T)
-    box(T, checked_smul_int(unbox(T,x), unbox(T,y)))
+    z, b = xchecked_mul(x, y)
+    b && throw(OverflowError())
+    z
 end
 function checked_mul{T<:UnsignedInt}(x::T, y::T)
-    box(T, checked_umul_int(unbox(T,x), unbox(T,y)))
+    z, b = xchecked_mul(x, y)
+    b && throw(OverflowError())
+    z
 end
+
 if BrokenSignedIntMul != Union{} && BrokenSignedIntMul != Int128
 function checked_mul{T<:BrokenSignedIntMul}(x::T, y::T)
     r = widemul(x, y)
