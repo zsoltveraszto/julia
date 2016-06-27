@@ -329,6 +329,7 @@ public:
                 [this](Module &M) {
                     JL_TIMING(LLVM_OPT);
                     PM.run(M);
+                    //M.dump();
                     std::unique_ptr<MemoryBuffer> ObjBuffer(
                         new ObjectMemoryBuffer(std::move(ObjBufferSV)));
                     auto Obj = object::ObjectFile::createObjectFile(ObjBuffer->getMemBufferRef());
