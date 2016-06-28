@@ -1247,19 +1247,19 @@ static Value *emit_untyped_intrinsic(intrinsic f, Value *x, Value *y, Value *z, 
 #endif
         Value *val = builder.CreateExtractValue(res, ArrayRef<unsigned>(0));
         Value *obit = builder.CreateExtractValue(res, ArrayRef<unsigned>(1));
-	Value *obyte = builder.CreateZExt(obit, T_int8);
+        Value *obyte = builder.CreateZExt(obit, T_int8);
 
-	jl_value_t *params[2];
-	params[0] = xtyp;
-	params[1] = (jl_value_t*)jl_bool_type;
-	jl_datatype_t *tuptyp = jl_apply_tuple_type_v(params,2);
-	*newtyp = tuptyp;
+        jl_value_t *params[2];
+        params[0] = xtyp;
+        params[1] = (jl_value_t*)jl_bool_type;
+        jl_datatype_t *tuptyp = jl_apply_tuple_type_v(params,2);
+        *newtyp = tuptyp;
 
-	Value *tupval;
-	tupval = UndefValue::get(julia_type_to_llvm((jl_value_t*)tuptyp));
-	tupval = builder.CreateInsertValue(tupval, val, ArrayRef<unsigned>(0));
-	tupval = builder.CreateInsertValue(tupval, obyte, ArrayRef<unsigned>(1));
-	return tupval;
+        Value *tupval;
+        tupval = UndefValue::get(julia_type_to_llvm((jl_value_t*)tuptyp));
+        tupval = builder.CreateInsertValue(tupval, val, ArrayRef<unsigned>(0));
+        tupval = builder.CreateInsertValue(tupval, obyte, ArrayRef<unsigned>(1));
+        return tupval;
     }
 
     case checked_sdiv_int:
