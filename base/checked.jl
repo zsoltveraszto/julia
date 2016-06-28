@@ -135,10 +135,10 @@ function checked_abs(x::SignedInt)
  end
 checked_abs(x::UnsignedInt) = x
 
-function xchecked_add{T<:SignedInt}(x::T, y::T)
+function add_with_overflow{T<:SignedInt}(x::T, y::T)
     checked_sadd_int(x, y)
 end
-function xchecked_add{T<:UnsignedInt}(x::T, y::T)
+function add_with_overflow{T<:UnsignedInt}(x::T, y::T)
     checked_uadd_int(x, y)
 end
 
@@ -152,12 +152,12 @@ The overflow protection may impose a perceptible performance penalty.
 """
 function checked_add end
 function checked_add{T<:SignedInt}(x::T, y::T)
-    z, b = xchecked_add(x, y)
+    z, b = add_with_overflow(x, y)
     b && throw(OverflowError())
     z
 end
 function checked_add{T<:UnsignedInt}(x::T, y::T)
-    z, b = xchecked_add(x, y)
+    z, b = add_with_overflow(x, y)
     b && throw(OverflowError())
     z
 end
@@ -196,10 +196,10 @@ checked_add{T}(x1::T, x2::T, x3::T, x4::T, x5::T, x6::T, x7::T) =
 checked_add{T}(x1::T, x2::T, x3::T, x4::T, x5::T, x6::T, x7::T, x8::T) =
     checked_add(checked_add(x1, x2), x3, x4, x5, x6, x7, x8)
 
-function xchecked_sub{T<:SignedInt}(x::T, y::T)
+function sub_with_overflow{T<:SignedInt}(x::T, y::T)
     checked_ssub_int(x, y)
 end
-function xchecked_sub{T<:UnsignedInt}(x::T, y::T)
+function sub_with_overflow{T<:UnsignedInt}(x::T, y::T)
     checked_usub_int(x, y)
 end
 
@@ -213,12 +213,12 @@ The overflow protection may impose a perceptible performance penalty.
 """
 function checked_sub end
 function checked_sub{T<:SignedInt}(x::T, y::T)
-    z, b = xchecked_sub(x, y)
+    z, b = sub_with_overflow(x, y)
     b && throw(OverflowError())
     z
 end
 function checked_sub{T<:UnsignedInt}(x::T, y::T)
-    z, b = xchecked_sub(x, y)
+    z, b = sub_with_overflow(x, y)
     b && throw(OverflowError())
     z
 end
@@ -242,10 +242,10 @@ checked_sub(x::Bool, y::Bool) = x - y
 checked_sub(x::Bool) = -x
 
 
-function xchecked_mul{T<:SignedInt}(x::T, y::T)
+function mul_with_overflow{T<:SignedInt}(x::T, y::T)
     checked_smul_int(x, y)
 end
-function xchecked_mul{T<:UnsignedInt}(x::T, y::T)
+function mul_with_overflow{T<:UnsignedInt}(x::T, y::T)
     checked_umul_int(x, y)
 end
 
@@ -258,12 +258,12 @@ The overflow protection may impose a perceptible performance penalty.
 """
 function checked_mul end
 function checked_mul{T<:SignedInt}(x::T, y::T)
-    z, b = xchecked_mul(x, y)
+    z, b = mul_with_overflow(x, y)
     b && throw(OverflowError())
     z
 end
 function checked_mul{T<:UnsignedInt}(x::T, y::T)
-    z, b = xchecked_mul(x, y)
+    z, b = mul_with_overflow(x, y)
     b && throw(OverflowError())
     z
 end
