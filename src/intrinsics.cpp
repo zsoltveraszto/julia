@@ -427,7 +427,7 @@ static jl_cgval_t generic_box(jl_value_t *targ, jl_value_t *x, jl_codectx_t *ctx
     if (jl_is_type_type(bt_value.typ))
         bt = jl_tparam0(bt_value.typ);
 
-    if (!bt || !jl_isbits(bt)) {
+    if (!bt || !jl_is_bitstype(bt)) {
         // it's easier to throw a good error from C than llvm
         Value *arg1 = boxed(bt_value, ctx);
         Value *arg2 = boxed(v, ctx);
@@ -452,7 +452,7 @@ static jl_cgval_t generic_box(jl_value_t *targ, jl_value_t *x, jl_codectx_t *ctx
         || !jl_is_bitstype(v.typ)
         || jl_datatype_size(v.typ) != nb) {
         Value *typ = emit_typeof_boxed(v, ctx);
-        if (!jl_isbits(v.typ)) {
+        if (!jl_is_bitstype(v.typ)) {
             if (isboxed) {
                 Value *isbits = emit_datatype_isbitstype(typ);
                 error_unless(isbits, "reinterpret: expected bitstype value for second argument", ctx);
@@ -1139,7 +1139,7 @@ static jl_cgval_t emit_intrinsic(intrinsic f, jl_value_t **args, size_t nargs,
 }
 
 static Value *emit_untyped_intrinsic(intrinsic f, Value *x, Value *y, Value *z, size_t nargs,
-				     jl_codectx_t *ctx, jl_datatype_t **newtyp, jl_value_t* xtyp)
+                                     jl_codectx_t *ctx, jl_datatype_t **newtyp, jl_value_t* xtyp)
 {
     Type *t = x->getType();
     Value *fy;

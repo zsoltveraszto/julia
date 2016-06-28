@@ -150,6 +150,7 @@ Calculates `x+y`, checking for overflow errors where applicable.
 
 The overflow protection may impose a perceptible performance penalty.
 """
+function checked_add end
 function checked_add{T<:SignedInt}(x::T, y::T)
     z, b = xchecked_add(x, y)
     b && throw(OverflowError())
@@ -210,6 +211,7 @@ Calculates `x-y`, checking for overflow errors where applicable.
 
 The overflow protection may impose a perceptible performance penalty.
 """
+function checked_sub end
 function checked_sub{T<:SignedInt}(x::T, y::T)
     z, b = xchecked_sub(x, y)
     b && throw(OverflowError())
@@ -254,6 +256,7 @@ Calculates `x*y`, checking for overflow errors where applicable.
 
 The overflow protection may impose a perceptible performance penalty.
 """
+function checked_mul end
 function checked_mul{T<:SignedInt}(x::T, y::T)
     z, b = xchecked_mul(x, y)
     b && throw(OverflowError())
