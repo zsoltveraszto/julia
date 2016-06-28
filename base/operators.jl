@@ -331,10 +331,12 @@ eltype(x) = eltype(typeof(x))
 # function pipelining, composition & negation
 
 |>(x, f) = f(x)
-
 ∘(f, g) = (x...)->f(g(x...))
 
 !(f::Function) = (x...)->!f(x...)
+|(f::Function, g::Function) = (x...)->f(x...) || g(x...)
+(&)(f::Function, g::Function) = (x...)->f(x...) && g(x...)
+($)(f::Function, g::Function) = (x...)->f(x...) $ g(x...)
 
 # array shape rules
 
