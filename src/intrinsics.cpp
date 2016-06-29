@@ -1246,6 +1246,10 @@ static Value *emit_untyped_intrinsic(intrinsic f, Value *x, Value *y, Value *z, 
         Value *res = builder.CreateCall2(intr, ix, iy);
 #endif
         Value *val = builder.CreateExtractValue(res, ArrayRef<unsigned>(0));
+	if (xtyp == (jl_value_t*)jl_bool_type) {
+	    val = builder.CreateZExt(val, T_int8);
+	}
+
         Value *obit = builder.CreateExtractValue(res, ArrayRef<unsigned>(1));
         Value *obyte = builder.CreateZExt(obit, T_int8);
 
