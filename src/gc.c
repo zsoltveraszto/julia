@@ -763,12 +763,14 @@ static inline jl_taggedvalue_t *reset_page(jl_gc_pool_t *p, jl_gc_pagemeta_t *pg
     memset(pg->ages, 0, GC_PAGE_SZ / 8 / p->osize + 1);
     jl_taggedvalue_t *beg = (jl_taggedvalue_t*)(pg->data + GC_PAGE_OFFSET);
     jl_taggedvalue_t *end = (jl_taggedvalue_t*)((char*)beg + (pg->nfree - 1)*p->osize);
-    gc_poison_page(pg);
+    gc_unpoison_tag(end);
     end->next = fl;
+    gc_poison_tag(end);
     pg->has_young = 0;
     pg->has_marked = 0;
     pg->fl_begin_offset = GC_PAGE_OFFSET;
     pg->fl_end_offset = (char*)end - (char*)beg + GC_PAGE_OFFSET;
+    gc_poison_page(pg);
     return beg;
 }
 
@@ -807,6 +809,7 @@ static inline jl_taggedvalue_t *__pool_alloc(jl_tls_states_t *ptls,
     // first try to use the freelist
     v = p->freelist;
     if (v) {
+        gc_unpoison_tag(v);
         jl_taggedvalue_t *next = v->next;
         v->header = 0;
         p->nfree--;
@@ -833,6 +836,7 @@ static inline jl_taggedvalue_t *__pool_alloc(jl_tls_states_t *ptls,
     end = (jl_taggedvalue_t*)&(gc_page_data(v)[end_offset]);
     if (__likely(v != end)) {
         p->newpages = (jl_taggedvalue_t*)((char*)v + osize);
+        gc_unpoison_tag(p->newpages);
     }
     else {
         // like the freelist case, but only update the page metadata when it is full
@@ -842,6 +846,7 @@ static inline jl_taggedvalue_t *__pool_alloc(jl_tls_states_t *ptls,
         pg->has_young = 1;
         p->newpages = v->next;
     }
+    gc_unpoison_tag(v);
     v->header = 0;
     gc_unpoison_value(v, osize);
     return v;
@@ -964,9 +969,17 @@ static jl_taggedvalue_t **sweep_page(jl_gc_pool_t *p, jl_gc_pagemeta_t *pg, jl_t
             jl_taggedvalue_t *begin = reset_page(p, pg, 0);
             jl_taggedvalue_t **pend = (jl_taggedvalue_t**)((char*)begin + ((int)pg->nfree - 1)*osize);
             jl_taggedvalue_t *npg = p->newpages;
+            int poisoned = gc_ispoisoned_tag(pend); // WTF
+            gc_unpoison_tag(pend);  // WTF
             *pend = npg;
+            if (poisoned)
+                gc_poison_tag(pend);    // WTF
             p->newpages = begin;
+            poisoned = gc_ispoisoned_tag(begin);
+            gc_unpoison_tag(begin);
             begin->next = (jl_taggedvalue_t*)0;
+            if (poisoned)
+                gc_poison_tag(begin);
             lazy_freed_pages++;
         }
         else {
@@ -984,6 +997,7 @@ static jl_taggedvalue_t **sweep_page(jl_gc_pool_t *p, jl_gc_pagemeta_t *pg, jl_t
             // the position of the freelist begin/end in this page
             // is stored in its metadata
             if (pg->fl_begin_offset != (uint16_t)-1) {
+                gc_unpoison_tag(pfl); // WTF
                 *pfl = page_pfl_beg(pg);
                 pfl = (jl_taggedvalue_t**)page_pfl_end(pg);
             }
@@ -1002,8 +1016,11 @@ static jl_taggedvalue_t **sweep_page(jl_gc_pool_t *p, jl_gc_pagemeta_t *pg, jl_t
         jl_taggedvalue_t **pfl_begin = NULL;
         uint8_t msk = 1; // mask for the age bit in the current age byte
         while ((char*)v <= lim) {
+            int poisoned = gc_ispoisoned_tag(v);
+            gc_unpoison_tag(v);
             int bits = v->bits.gc;
             if (!gc_marked(bits)) {
+                gc_unpoison_tag(pfl);   // WTF
                 *pfl = v;
                 gc_poison_value(v, osize);
                 pfl = &v->next;
@@ -1029,6 +1046,8 @@ static jl_taggedvalue_t **sweep_page(jl_gc_pool_t *p, jl_gc_pagemeta_t *pg, jl_t
                 *ages |= msk;
                 freedall = 0;
             }
+            if (poisoned)
+                gc_poison_tag(v);
             v = (jl_taggedvalue_t*)((char*)v + osize);
             msk <<= 1;
             if (!msk) {
@@ -1138,7 +1157,11 @@ static void gc_sweep_pool(int sweep_full)
         jl_tls_states_t *ptls2 = jl_all_tls_states[t_i];
         for (int i = 0; i < JL_GC_N_POOLS; i++) {
             jl_gc_pool_t *p = &ptls2->heap.norm_pools[i];
+            int poisoned = gc_ispoisoned_tag(pfl[t_i * JL_GC_N_POOLS + i]); // WTF
+            gc_unpoison_tag(pfl[t_i * JL_GC_N_POOLS + i]);  // WTF
             *pfl[t_i * JL_GC_N_POOLS + i] = NULL;
+            if (poisoned)
+                gc_poison_tag(pfl[t_i * JL_GC_N_POOLS + i]);    // WTF
             if (p->freelist) {
                 p->nfree = page_metadata(p->freelist)->nfree;
             }
