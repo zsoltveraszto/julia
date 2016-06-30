@@ -13,8 +13,7 @@ static void addOptimizationPasses(T *PM)
     PM->add(createVerifierPass());
 #endif
 
-#ifdef __has_feature
-#   if __has_feature(address_sanitizer)
+#if __has_feature(address_sanitizer)
 #   if defined(LLVM37) && !defined(LLVM38)
     // LLVM 3.7 BUG: ASAN pass doesn't properly initialize its dependencies
     initializeTargetLibraryInfoWrapperPassPass(*PassRegistry::getPassRegistry());
@@ -23,7 +22,6 @@ static void addOptimizationPasses(T *PM)
 #   endif
 #   if __has_feature(memory_sanitizer)
     PM->add(llvm::createMemorySanitizerPass(true));
-#   endif
 #endif
     if (jl_options.opt_level == 0) {
         return;
