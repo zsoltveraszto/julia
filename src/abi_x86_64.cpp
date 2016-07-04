@@ -41,10 +41,9 @@
 // used to track the state of the ABI generator during
 // code generation
 struct AbiState {
-    unsigned char int_regs, sse_regs;
 };
 
-const AbiState default_abi_state = {6,8};
+const AbiState default_abi_state = {};
 
 enum ArgClass { Integer, Sse, SseUp, X87, X87Up, ComplexX87, NoClass, Memory };
 
@@ -158,41 +157,17 @@ Classification classify(jl_value_t *ty)
     return cl;
 }
 
-bool use_sret(AbiState *state,jl_value_t *ty)
+bool use_sret(AbiState*, jl_value_t *ty)
 {
-    int sret = classify(ty).isMemory;
-    if (sret) {
-        assert(state->int_regs>0 && "No int regs available when determining sret-ness?");
-        state->int_regs--;
-    }
-    return sret;
+    return classify(ty).isMemory;
 }
 
-void needPassByRef(AbiState *state, jl_value_t *ty, bool *byRef, bool *inReg)
+void needPassByRef(AbiState*, jl_value_t *ty, bool *byRef, bool *inReg)
 {
     Classification cl = classify(ty);
     if (cl.isMemory) {
         *byRef = true;
         return;
-    }
-
-    // Figure out how many registers we want for this arg:
-    AbiState wanted = { 0, 0 };
-    for (int i = 0 ; i < 2; i++) {
-        if (cl.classes[i] == Integer)
-            wanted.int_regs++;
-        else if (cl.classes[i] == Sse)
-            wanted.sse_regs++;
-    }
-
-    if (wanted.int_regs <= state->int_regs && wanted.sse_regs <= state->sse_regs) {
-        state->int_regs -= wanted.int_regs;
-        state->sse_regs -= wanted.sse_regs;
-    }
-    else if (jl_is_structtype(ty)) {
-        // spill to memory even though we would ordinarily pass
-        // it in registers
-        *byRef = true;
     }
 }
 

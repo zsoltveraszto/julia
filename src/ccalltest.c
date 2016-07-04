@@ -505,6 +505,46 @@ test_huge(4b, r12);
 test_huge(5a, r1);
 test_huge(5b, r1);
 
+// Enough arguments for architectures that uses registers for integer or
+// floating point arguments to spill.
+JL_DLLEXPORT int test_long_args_intp(int *a1, int *a2, int *a3, int *a4,
+                                     int *a5, int *a6, int *a7, int *a8,
+                                     int *a9, int *a10, int *a11, int *a12,
+                                     int *a13, int *a14)
+{
+    return (*a1 + *a2 + *a3 + *a4 + *a5 + *a6 + *a7 + *a8 + *a9 + *a10 +
+            *a11 + *a12 + *a13 + *a14);
+}
+
+JL_DLLEXPORT int test_long_args_int(int a1, int a2, int a3, int a4,
+                                    int a5, int a6, int a7, int a8,
+                                    int a9, int a10, int a11, int a12,
+                                    int a13, int a14)
+{
+    return (a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 +
+            a11 + a12 + a13 + a14);
+}
+
+JL_DLLEXPORT float test_long_args_float(float a1, float a2, float a3,
+                                        float a4, float a5, float a6,
+                                        float a7, float a8, float a9,
+                                        float a10, float a11, float a12,
+                                        float a13, float a14)
+{
+    return (a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 +
+            a11 + a12 + a13 + a14);
+}
+
+JL_DLLEXPORT double test_long_args_double(double a1, double a2, double a3,
+                                          double a4, double a5, double a6,
+                                          double a7, double a8, double a9,
+                                          double a10, double a11, double a12,
+                                          double a13, double a14)
+{
+    return (a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8 + a9 + a10 +
+            a11 + a12 + a13 + a14);
+}
+
 JL_DLLEXPORT int get_c_int(void)
 {
     return c_int;

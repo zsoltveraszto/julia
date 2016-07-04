@@ -860,3 +860,43 @@ function f17204(a)
 end
 @test ccall(cfunction(f17204, Vector{Any}, Tuple{Vector{Any}}),
             Vector{Any}, (Vector{Any},), Any[1:10;]) == Any[11:20;]
+
+for i in 1:1000
+    intargs = rand(1:10000, 14)
+    intsum = sum(intargs)
+    floatargs = rand(14)
+    float32sum = sum(map(Float32, floatargs))
+    float64sum = sum(floatargs)
+    @test ccall((:test_long_args_intp, libccalltest), Cint,
+                (Ref{Cint}, Ref{Cint}, Ref{Cint}, Ref{Cint},
+                 Ref{Cint}, Ref{Cint}, Ref{Cint}, Ref{Cint},
+                 Ref{Cint}, Ref{Cint}, Ref{Cint}, Ref{Cint},
+                 Ref{Cint}, Ref{Cint}),
+                intargs[1], intargs[2], intargs[3], intargs[4],
+                intargs[5], intargs[6], intargs[7], intargs[8],
+                intargs[9], intargs[10], intargs[11], intargs[12],
+                intargs[13], intargs[14]) == intsum
+    @test ccall((:test_long_args_int, libccalltest), Cint,
+                (Cint, Cint, Cint, Cint, Cint, Cint, Cint, Cint,
+                 Cint, Cint, Cint, Cint, Cint, Cint),
+                intargs[1], intargs[2], intargs[3], intargs[4],
+                intargs[5], intargs[6], intargs[7], intargs[8],
+                intargs[9], intargs[10], intargs[11], intargs[12],
+                intargs[13], intargs[14]) == intsum
+    @test ccall((:test_long_args_float, libccalltest), Float32,
+                (Float32, Float32, Float32, Float32, Float32, Float32,
+                 Float32, Float32, Float32, Float32, Float32, Float32,
+                 Float32, Float32),
+                floatargs[1], floatargs[2], floatargs[3], floatargs[4],
+                floatargs[5], floatargs[6], floatargs[7], floatargs[8],
+                floatargs[9], floatargs[10], floatargs[11], floatargs[12],
+                floatargs[13], floatargs[14]) ≈ float32sum
+    @test ccall((:test_long_args_double, libccalltest), Float64,
+                (Float64, Float64, Float64, Float64, Float64, Float64,
+                 Float64, Float64, Float64, Float64, Float64, Float64,
+                 Float64, Float64),
+                floatargs[1], floatargs[2], floatargs[3], floatargs[4],
+                floatargs[5], floatargs[6], floatargs[7], floatargs[8],
+                floatargs[9], floatargs[10], floatargs[11], floatargs[12],
+                floatargs[13], floatargs[14]) ≈ float64sum
+end
