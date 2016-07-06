@@ -28,7 +28,10 @@ end
 type MethodError <: Exception
     f
     args
+    world::UInt
+    MethodError(f::ANY, args::ANY, world::UInt) = new(f, args, world)
 end
+MethodError(f::ANY, args::ANY) = MethodError(f, args, 0)
 
 type EOFError <: Exception end
 
