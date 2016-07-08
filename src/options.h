@@ -34,7 +34,7 @@
 // with MEMDEBUG, every object is allocated explicitly with malloc, and
 // filled with 0xbb before being freed. this helps tools like valgrind
 // catch invalid accesses.
-// #define MEMDEBUG
+#define MEMDEBUG
 
 // GC_VERIFY force a full verification gc along with every quick gc to ensure no
 // reachable memory is freed

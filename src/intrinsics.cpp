@@ -258,7 +258,7 @@ static Constant *julia_const_to_llvm(jl_value_t *e, bool nested=false)
 static jl_cgval_t ghostValue(jl_value_t *ty);
 
 // emit code to unpack a raw value from a box into registers or a stack slot
-static Value *emit_unbox(Type *to, const jl_cgval_t &x, jl_value_t *jt, Value *dest, bool volatile_store)
+static Value *emit_unbox(Type *to, const jl_cgval_t &x, jl_value_t *jt, Value *dest, bool volatile_store, bool needsroot)
 {
     assert(to != T_pjlvalue);
     // TODO: fully validate that x.typ == jt?
@@ -297,7 +297,7 @@ static Value *emit_unbox(Type *to, const jl_cgval_t &x, jl_value_t *jt, Value *d
         builder.CreateStore(unboxed, dest, volatile_store);
         return NULL;
     }
-    if (jl_is_vt(x.typ) && !dest) {
+    if (jl_is_vt(x.typ) && !dest && needsroot) {
         assert(0 && "Should never actually unbox !ptrfree");
         abort();
     }

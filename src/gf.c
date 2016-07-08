@@ -800,7 +800,7 @@ static jl_lambda_info_t *cache_method(jl_methtable_t *mt, union jl_typemap_t *ca
     return newmeth;
 }
 
-static jl_lambda_info_t *jl_mt_assoc_by_type(jl_methtable_t *mt, jl_datatype_t *tt, int cache, int inexact)
+jl_lambda_info_t *jl_mt_assoc_by_type(jl_methtable_t *mt, jl_datatype_t *tt, int cache, int inexact)
 {
     // caller must hold the mt->writelock
     jl_typemap_entry_t *entry = NULL;
