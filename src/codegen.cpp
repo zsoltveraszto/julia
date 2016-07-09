@@ -2736,7 +2736,12 @@ static jl_cgval_t emit_call_function_object(jl_lambda_info_t *li, const jl_cgval
         unsigned idx = 0;
         Value *result;
         if (sret) {
-            result = emit_static_alloca(cft->getParamType(0)->getContainedType(0), ctx);
+            bool ret_needsroot = !((jl_datatype_t*)jlretty)->layout->pointerfree;
+            Type *llvm_retty = cft->getParamType(0)->getContainedType(0);
+            if (ret_needsroot)
+                result = emit_static_alloca(llvm_retty, jlretty, ctx);
+            else
+                result = emit_static_alloca(llvm_retty);//builder.CreateAlloca();
             argvals[idx] = result;
             idx++;
         }
