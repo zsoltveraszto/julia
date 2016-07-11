@@ -199,6 +199,12 @@ let n=10
     end
 end
 
+# Hermitian wrapper ignores imaginary parts on diagonal
+let A = [1.0+im 2.0; 2.0 0.0]
+    @test !ishermitian(A)
+    @test Hermitian(A)[1,1] == 1
+end
+
 #Issue #7647: test xsyevr, xheevr, xstevr drivers
 for Mi7647 in (Symmetric(diagm(1.0:3.0)),
                Hermitian(diagm(1.0:3.0)),
@@ -223,12 +229,6 @@ for f in (eigfact, eigvals, eig)
         @test_throws ArgumentError f(A, 3, 2)
         @test_throws ArgumentError f(A, 1:4)
     end
-end
-
-#Issue 10671
-let A = [1.0+im 2.0; 2.0 0.0]
-    @test !ishermitian(A)
-    @test_throws ArgumentError Hermitian(A)
 end
 
 # Unary minus for Symmetric matrices

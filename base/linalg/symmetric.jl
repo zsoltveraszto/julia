@@ -43,13 +43,15 @@ eigfact(Hupper)
 
 `eigfact` will use a method specialized for matrices known to be Hermitian.
 Note that `Hupper` will not be equal to `Hlower` unless `A` is itself Hermitian (e.g. if `A == A'`).
+
+All non-real parts of the diagonal will be ignored.
+
+```julia
+Hermitian(fill(complex(1,1), 1, 1)) == fill(1, 1, 1)
+```
 """
 function Hermitian(A::AbstractMatrix, uplo::Symbol=:U)
     n = checksquare(A)
-    for i=1:n
-        isreal(A[i, i]) || throw(ArgumentError(
-            "Cannot construct Hermitian from matrix with nonreal diagonals"))
-    end
     Hermitian{eltype(A),typeof(A)}(A, char_uplo(uplo))
 end
 
@@ -60,13 +62,21 @@ size(A::HermOrSym, d) = size(A.data, d)
 size(A::HermOrSym) = size(A.data)
 @inline function getindex(A::Symmetric, i::Integer, j::Integer)
     @boundscheck checkbounds(A, i, j)
-    @inbounds r = (A.uplo == 'U') == (i < j) ? A.data[i, j] : A.data[j, i]
-    r
+    @inbounds if (A.uplo == 'U') == (i < j)
+        return A.data[i, j]
+    else
+        return A.data[j, i]
+    end
 end
 @inline function getindex(A::Hermitian, i::Integer, j::Integer)
     @boundscheck checkbounds(A, i, j)
-    @inbounds r = (A.uplo == 'U') == (i < j) ? A.data[i, j] : conj(A.data[j, i])
-    r
+    @inbounds if (A.uplo == 'U') == (i < j)
+        return A.data[i, j]
+    elseif i == j
+        return eltype(A)(real(A.data[i, j]))
+    else
+        return conj(A.data[j, i])
+    end
 end
 
 similar{T}(A::Symmetric, ::Type{T}) = Symmetric(similar(A.data, T))
@@ -82,9 +92,16 @@ end
 
 # Conversion
 convert(::Type{Matrix}, A::Symmetric) = copytri!(convert(Matrix, copy(A.data)), A.uplo)
-convert(::Type{Matrix}, A::Hermitian) = copytri!(convert(Matrix, copy(A.data)), A.uplo, true)
+function convert(::Type{Matrix}, A::Hermitian)
+    B = copytri!(convert(Matrix, copy(A.data)), A.uplo, true)
+    for i = 1:size(A, 1)
+        B[i,i] = real(B[i,i])
+    end
+    return B
+end
 convert(::Type{Array}, A::Union{Symmetric,Hermitian}) = convert(Matrix, A)
 full(A::Union{Symmetric,Hermitian}) = convert(Array, A)
+
 parent(A::HermOrSym) = A.data
 convert{T,S<:AbstractMatrix}(::Type{Symmetric{T,S}},A::Symmetric{T,S}) = A
 convert{T,S<:AbstractMatrix}(::Type{Symmetric{T,S}},A::Symmetric) = Symmetric{T,S}(convert(S,A.data),A.uplo)
@@ -115,53 +132,8 @@ ctranspose(A::Hermitian) = A
 trace(A::Hermitian) = real(trace(A.data))
 
 #tril/triu
-function tril(A::Hermitian, k::Integer=0)
-    if A.uplo == 'U' && k <= 0
-        return tril!(A.data',k)
-    elseif A.uplo == 'U' && k > 0
-        return tril!(A.data',-1) + tril!(triu(A.data),k)
-    elseif A.uplo == 'L' && k <= 0
-        return tril(A.data,k)
-    else
-        return tril(A.data,-1) + tril!(triu!(A.data'),k)
-    end
-end
-
-function tril(A::Symmetric, k::Integer=0)
-    if A.uplo == 'U' && k <= 0
-        return tril!(A.data.',k)
-    elseif A.uplo == 'U' && k > 0
-        return tril!(A.data.',-1) + tril!(triu(A.data),k)
-    elseif A.uplo == 'L' && k <= 0
-        return tril(A.data,k)
-    else
-        return tril(A.data,-1) + tril!(triu!(A.data.'),k)
-    end
-end
-
-function triu(A::Hermitian, k::Integer=0)
-    if A.uplo == 'U' && k >= 0
-        return triu(A.data,k)
-    elseif A.uplo == 'U' && k < 0
-        return triu(A.data,1) + triu!(tril!(A.data'),k)
-    elseif A.uplo == 'L' && k >= 0
-        return triu!(A.data',k)
-    else
-        return triu!(A.data',1) + triu!(tril(A.data),k)
-    end
-end
-
-function triu(A::Symmetric, k::Integer=0)
-    if A.uplo == 'U' && k >= 0
-        return triu(A.data,k)
-    elseif A.uplo == 'U' && k < 0
-        return triu(A.data,1) + triu!(tril!(A.data.'),k)
-    elseif A.uplo == 'L' && k >= 0
-        return triu!(A.data.',k)
-    else
-        return triu!(A.data.',1) + triu!(tril(A.data),k)
-    end
-end
+tril(A::HermOrSym, k::Integer = 0) = tril!(full(A), k)
+triu(A::HermOrSym, k::Integer = 0) = triu!(full(A), k)
 
 -{Tv,S<:AbstractMatrix}(A::Symmetric{Tv,S}) = Symmetric{Tv,S}(-A.data, A.uplo)
 
