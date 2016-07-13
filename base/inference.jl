@@ -1866,7 +1866,8 @@ function finish(me::InferenceState)
         alloc_elim_pass!(me.linfo, me)
         getfield_elim_pass!(me.linfo, me)
         # remove placeholders
-        filter!(x->x!==nothing, me.linfo.code)
+        filter!(x->!(x===nothing || isa(x,QuoteNode) || (isa(x,Slot) && (me.linfo.slotflags[x.id]&Slot_UsedUndef)==0)),
+                me.linfo.code)
         reindex_labels!(me.linfo, me)
     end
     widen_all_consts!(me.linfo)
