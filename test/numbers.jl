@@ -2157,7 +2157,7 @@ rationalize(nextfloat(0.0)) == 0//1
 @test 3//2 <= typemax(Int)
 
 # check gcd and related functions against GMP
-for T in (Int32,Int64), ii = -20:20, jj = -20:20
+for T in (Int32,Int64), ii = T(-20):T(20), jj = T(-20):T(20)
     i::T, j::T = ii, jj
     local d = gcd(i,j)
     @test d >= 0

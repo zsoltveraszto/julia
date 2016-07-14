@@ -1,6 +1,5 @@
 # This file is a part of Julia. License is MIT: http://julialang.org/license
 
-@testset "statistics" begin
 # middle
 
 @test middle(3) === 3.0
@@ -339,5 +338,4 @@ end
 let v = varm([1.0+2.0im], 0; corrected = false)
     @test v ≈ 5
     @test isa(v, Float64)
-end
 end
