@@ -1684,7 +1684,7 @@
            (else
             `(block
               ,.(map (lambda (x)
-                       (if (decl? x)
+                       (if (and (decl? x) (length= (cdr x) 2) (symbol? (cadr x)))
                            (let ((str-x (deparse x)))
                                 (syntax-deprecation #f str-x (string "local " str-x))
                                 `(decl ,@(map expand-forms (cdr x))))
