@@ -3,6 +3,7 @@
 # test core language features
 
 const Bottom = Union{}
+const name_prefix = "$(["$m." for m in fullname(current_module())]...)"
 
 macro testintersect(args...)
     _testintersect(args...)
@@ -1184,8 +1185,8 @@ immutable Foo2509; foo::Int; end
 
 # issue #2517
 immutable Foo2517; end
-@test repr(Foo2517()) == "Foo2517()"
-@test repr(Array{Foo2517}(1)) == "Foo2517[Foo2517()]"
+@test repr(Foo2517()) == "$(name_prefix)Foo2517()"
+@test repr(Array{Foo2517}(1)) == "$(name_prefix)Foo2517[$(name_prefix)Foo2517()]"
 @test Foo2517() === Foo2517()
 
 # issue #1474
@@ -2451,7 +2452,7 @@ let x,y,f
     y = f() # invoke llvm constant folding
     @test Int(0x468ace) === Int(y)
     @test x !== y
-    @test string(y) == "Int24(0x468ace)"
+    @test string(y) == "$(name_prefix)Int24(0x468ace)"
 end
 
 # issue #10570
@@ -3077,7 +3078,7 @@ x7864 = 1
 end
 
 @test_throws UndefVarError x7864
-using M7864
+using .M7864
 @test x7864 == 1
 
 # issue #11715
@@ -4399,7 +4400,7 @@ module A15838
     const x = :a
 end
 module B15838
-    import A15838.@f
+    import ..A15838.@f
     macro f(x); return :x; end
     const x = :b
 end

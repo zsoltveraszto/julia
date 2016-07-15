@@ -1,5 +1,7 @@
 # This file is a part of Julia. License is MIT: http://julialang.org/license
 
+const name_prefix = "$(["$m." for m in fullname(current_module())]...)"
+
 function test_have_color(buf, color, no_color)
     if Base.have_color
         @test takebuf_string(buf) == color
@@ -79,12 +81,12 @@ type PR16155
 end
 
 Base.show_method_candidates(buf, MethodError(PR16155,(1.0, 2.0, Int64(3))))
-test_have_color(buf, "\e[0m\nClosest candidates are:\n  PR16155(::Any, ::Any)\n  PR16155(\e[1m\e[31m::Int64\e[0m, ::Any)\n  PR16155{T}(::Any)\e[0m",
-                     "\nClosest candidates are:\n  PR16155(::Any, ::Any)\n  PR16155(!Matched::Int64, ::Any)\n  PR16155{T}(::Any)")
+test_have_color(buf, "\e[0m\nClosest candidates are:\n  $(name_prefix)PR16155(::Any, ::Any)\n  $(name_prefix)PR16155(\e[1m\e[31m::Int64\e[0m, ::Any)\n  $(name_prefix)PR16155{T}(::Any)\e[0m",
+                     "\nClosest candidates are:\n  $(name_prefix)PR16155(::Any, ::Any)\n  $(name_prefix)PR16155(!Matched::Int64, ::Any)\n  $(name_prefix)PR16155{T}(::Any)")
 
 Base.show_method_candidates(buf, MethodError(PR16155,(Int64(3), 2.0, Int64(3))))
-test_have_color(buf, "\e[0m\nClosest candidates are:\n  PR16155(::Int64, ::Any)\n  PR16155(::Any, ::Any)\n  PR16155{T}(::Any)\e[0m",
-                     "\nClosest candidates are:\n  PR16155(::Int64, ::Any)\n  PR16155(::Any, ::Any)\n  PR16155{T}(::Any)")
+test_have_color(buf, "\e[0m\nClosest candidates are:\n  $(name_prefix)PR16155(::Int64, ::Any)\n  $(name_prefix)PR16155(::Any, ::Any)\n  $(name_prefix)PR16155{T}(::Any)\e[0m",
+                     "\nClosest candidates are:\n  $(name_prefix)PR16155(::Int64, ::Any)\n  $(name_prefix)PR16155(::Any, ::Any)\n  $(name_prefix)PR16155{T}(::Any)")
 
 method_c6(; x=1) = x
 method_c6(a; y=1) = y
@@ -178,14 +180,14 @@ let
     f11007(::MethodType11007) = nothing
     err_str = @except_str(invoke(f11007, Tuple{InvokeType11007},
                                  InstanceType11007()), MethodError)
-    @test !contains(err_str, "::InstanceType11007")
-    @test contains(err_str, "::InvokeType11007")
+    @test !contains(err_str, "::$(name_prefix)InstanceType11007")
+    @test contains(err_str, "::$(name_prefix)InvokeType11007")
 end
 
 module __tmp_replutil
 
 using Base.Test
-import Main.@except_str
+import ..@except_str
 global +
 +() = nothing
 err_str = @except_str 1 + 2 MethodError
@@ -210,7 +212,7 @@ end
 abstract T11007
 let
     err_str = @except_str T11007() MethodError
-    @test contains(err_str, "no method matching T11007()")
+    @test contains(err_str, "no method matching $(name_prefix)T11007()")
 end
 
 immutable TypeWithIntParam{T <: Integer} end
@@ -286,17 +288,17 @@ let err_str,
     err_str = @except_str :a() MethodError
     @test contains(err_str, "MethodError: objects of type Symbol are not callable")
     err_str = @except_str EightBitType() MethodError
-    @test contains(err_str, "MethodError: no method matching EightBitType()")
+    @test contains(err_str, "MethodError: no method matching $(name_prefix)EightBitType()")
     err_str = @except_str i() MethodError
-    @test contains(err_str, "MethodError: objects of type EightBitType are not callable")
+    @test contains(err_str, "MethodError: objects of type $(name_prefix)EightBitType are not callable")
     err_str = @except_str EightBitTypeT() MethodError
-    @test contains(err_str, "MethodError: no method matching EightBitTypeT{T}()")
+    @test contains(err_str, "MethodError: no method matching $(name_prefix)EightBitTypeT{T}()")
     err_str = @except_str EightBitTypeT{Int32}() MethodError
-    @test contains(err_str, "MethodError: no method matching EightBitTypeT{Int32}()")
+    @test contains(err_str, "MethodError: no method matching $(name_prefix)EightBitTypeT{Int32}()")
     err_str = @except_str j() MethodError
-    @test contains(err_str, "MethodError: objects of type EightBitTypeT{Int32} are not callable")
+    @test contains(err_str, "MethodError: objects of type $(name_prefix)EightBitTypeT{Int32} are not callable")
     err_str = @except_str FunctionLike()() MethodError
-    @test contains(err_str, "MethodError: no method matching (::FunctionLike)()")
+    @test contains(err_str, "MethodError: no method matching (::$(name_prefix)FunctionLike)()")
     err_str = @except_str [1,2](1) MethodError
     @test contains(err_str, "MethodError: objects of type Array{$Int,1} are not callable\nUse square brackets [] for indexing an Array.")
     # Issue 14940
@@ -325,13 +327,13 @@ let err_str,
 
     @test sprint(show, which(Symbol, Tuple{})) == "Symbol() at $sp:$(method_defs_lineno + 0)"
     @test sprint(show, which(:a, Tuple{})) == "(::Symbol)() at $sp:$(method_defs_lineno + 1)"
-    @test sprint(show, which(EightBitType, Tuple{})) == "EightBitType() at $sp:$(method_defs_lineno + 2)"
-    @test sprint(show, which(reinterpret(EightBitType, 0x54), Tuple{})) == "(::EightBitType)() at $sp:$(method_defs_lineno + 3)"
-    @test sprint(show, which(EightBitTypeT, Tuple{})) == "(::Type{EightBitTypeT})() at $sp:$(method_defs_lineno + 4)"
-    @test sprint(show, which(EightBitTypeT{Int32}, Tuple{})) == "(::Type{EightBitTypeT{T}}){T}() at $sp:$(method_defs_lineno + 5)"
-    @test sprint(show, which(reinterpret(EightBitTypeT{Int32}, 0x54), Tuple{})) == "(::EightBitTypeT)() at $sp:$(method_defs_lineno + 6)"
+    @test sprint(show, which(EightBitType, Tuple{})) == "$(name_prefix)EightBitType() at $sp:$(method_defs_lineno + 2)"
+    @test sprint(show, which(reinterpret(EightBitType, 0x54), Tuple{})) == "(::$(name_prefix)EightBitType)() at $sp:$(method_defs_lineno + 3)"
+    @test sprint(show, which(EightBitTypeT, Tuple{})) == "(::Type{$(name_prefix)EightBitTypeT})() at $sp:$(method_defs_lineno + 4)"
+    @test sprint(show, which(EightBitTypeT{Int32}, Tuple{})) == "(::Type{$(name_prefix)EightBitTypeT{T}}){T}() at $sp:$(method_defs_lineno + 5)"
+    @test sprint(show, which(reinterpret(EightBitTypeT{Int32}, 0x54), Tuple{})) == "(::$(name_prefix)EightBitTypeT)() at $sp:$(method_defs_lineno + 6)"
     @test startswith(sprint(show, which(getfield(Base, Symbol("@doc")), Tuple{Vararg{Any}})), "@doc(x...) at boot.jl:")
-    @test startswith(sprint(show, which(FunctionLike(), Tuple{})), "(::FunctionLike)() at $sp:$(method_defs_lineno + 7)")
+    @test startswith(sprint(show, which(FunctionLike(), Tuple{})), "(::$(name_prefix)FunctionLike)() at $sp:$(method_defs_lineno + 7)")
     @test stringmime("text/plain", FunctionLike()) == "(::FunctionLike) (generic function with 1 method)"
     @test stringmime("text/plain", Core.arraysize) == "arraysize (built-in function)"
 
@@ -340,17 +342,17 @@ let err_str,
     err_str = @except_stackframe :a() ErrorException
     @test err_str == " in (::Symbol)() at $sn:$(method_defs_lineno + 1)"
     err_str = @except_stackframe EightBitType() ErrorException
-    @test err_str == " in EightBitType() at $sn:$(method_defs_lineno + 2)"
+    @test err_str == " in $(name_prefix)EightBitType() at $sn:$(method_defs_lineno + 2)"
     err_str = @except_stackframe i() ErrorException
-    @test err_str == " in (::EightBitType)() at $sn:$(method_defs_lineno + 3)"
+    @test err_str == " in (::$(name_prefix)EightBitType)() at $sn:$(method_defs_lineno + 3)"
     err_str = @except_stackframe EightBitTypeT() ErrorException
-    @test err_str == " in EightBitTypeT{T}() at $sn:$(method_defs_lineno + 4)"
+    @test err_str == " in $(name_prefix)EightBitTypeT{T}() at $sn:$(method_defs_lineno + 4)"
     err_str = @except_stackframe EightBitTypeT{Int32}() ErrorException
-    @test err_str == " in EightBitTypeT{Int32}() at $sn:$(method_defs_lineno + 5)"
+    @test err_str == " in $(name_prefix)EightBitTypeT{Int32}() at $sn:$(method_defs_lineno + 5)"
     err_str = @except_stackframe j() ErrorException
-    @test err_str == " in (::EightBitTypeT{Int32})() at $sn:$(method_defs_lineno + 6)"
+    @test err_str == " in (::$(name_prefix)EightBitTypeT{Int32})() at $sn:$(method_defs_lineno + 6)"
     err_str = @except_stackframe FunctionLike()() ErrorException
-    @test err_str == " in (::FunctionLike)() at $sn:$(method_defs_lineno + 7)"
+    @test err_str == " in (::$(name_prefix)FunctionLike)() at $sn:$(method_defs_lineno + 7)"
 end
 
 # Issue #13032

@@ -95,7 +95,7 @@ indsoffset(i::Integer) = 0
 
 end
 
-using OAs
+using .OAs
 
 let
 # Basics
