@@ -1,7 +1,6 @@
 # This file is a part of Julia. License is MIT: http://julialang.org/license
 
 # test core language features
-
 const Bottom = Union{}
 
 macro testintersect(args...)
@@ -2338,7 +2337,7 @@ type Obj; x; end
         test_wr(ref, wref)
         pop!(ref)
         gc()
-        @test_broken wref[1].value == nothing
+        @test wref[1].value == nothing
     end
     test_wr()
 end
@@ -4465,3 +4464,4 @@ end
 f17147(::Tuple) = 1
 f17147{N}(::Vararg{Tuple,N}) = 2
 @test f17147((), ()) == 2
+
