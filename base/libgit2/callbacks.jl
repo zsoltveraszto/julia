@@ -82,7 +82,8 @@ function credentials_callback(cred::Ptr{Ptr{Void}}, url_ptr::Cstring,
         end
 
         # first try ssh-agent if credentials support its usage
-        if creds[:usesshagent, credid] == "Y"
+        if creds[:usesshagent, credid] === nothing ||
+                creds[:usesshagent, credid] == "Y"
             err = ccall((:git_cred_ssh_key_from_agent, :libgit2), Cint,
                          (Ptr{Ptr{Void}}, Cstring), cred, username_ptr)
             creds[:usesshagent, credid] = "U" # used ssh-agent only one time
