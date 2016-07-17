@@ -269,6 +269,7 @@ Specializing ``reshape``
 
 Optionally, define a method
 ::
+
    Base.reshape(A::AbstractArray, shape::Tuple{ZeroRange,Vararg{ZeroRange}}) = ...
 
 and you can ``reshape`` an array so that the result has custom indices.
