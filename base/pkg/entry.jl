@@ -680,7 +680,9 @@ end
 function test!(pkg::AbstractString,
                errs::Vector{AbstractString},
                nopkgs::Vector{AbstractString},
-               notests::Vector{AbstractString}; coverage::Bool=false)
+               notests::Vector{AbstractString};
+               coverage::Bool=false, ambiguity::Symbol=:warn)
+    ambiguity ∈ (:none, :warn, :error) || throw(ArgumentError("options for ambiguity are :none, :warn, or :error"))
     reqs_path = abspath(pkg,"test","REQUIRE")
     if isfile(reqs_path)
         tests_require = Reqs.parse(reqs_path)
@@ -712,12 +714,12 @@ function test!(pkg::AbstractString,
     isfile(reqs_path) && resolve()
 end
 
-function test(pkgs::Vector{AbstractString}; coverage::Bool=false)
+function test(pkgs::Vector{AbstractString}; coverage::Bool=false, ambiguity::Symbol=:warn)
     errs = AbstractString[]
     nopkgs = AbstractString[]
     notests = AbstractString[]
     for pkg in pkgs
-        test!(pkg,errs,nopkgs,notests; coverage=coverage)
+        test!(pkg,errs,nopkgs,notests; coverage=coverage, ambiguity=ambiguity)
     end
     if !all(isempty, (errs, nopkgs, notests))
         messages = AbstractString[]
