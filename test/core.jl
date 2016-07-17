@@ -4463,3 +4463,11 @@ end
 f17147(::Tuple) = 1
 f17147{N}(::Vararg{Tuple,N}) = 2
 @test f17147((), ()) == 2
+
+# make sure lowering agrees on sp order
+function captsp{T, S}(x::T, y::S)
+    subf(x2::Int) = T
+    subf(x2::UInt) = S
+    return subf(Int(1)), subf(UInt(1))
+end
+@test captsp(1, 2.0) == (Int, Float64)
