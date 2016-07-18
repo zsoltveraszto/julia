@@ -244,6 +244,8 @@ end
 end
 
 ### From abstractarray.jl: Internal multidimensional indexing definitions ###
+getindex(x::Number, i::CartesianIndex{0}) = x
+
 # These are not defined on directly on getindex to avoid
 # ambiguities for AbstractArray subtypes. See the note in abstractarray.jl
 
